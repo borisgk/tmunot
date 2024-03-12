@@ -8,12 +8,17 @@ import (
 
 func main() {
 	fmt.Println("Started Tmunot 1.0")
+
 	log.Println("Log entry: everything OK.")
 
 	http.HandleFunc("/", homeHandler)
 
-	http.ListenAndServe(":3450", nil)
-	
+	err := http.ListenAndServe(":3450", nil)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	fmt.Println("Stopped Tmunot 1.0")
 }
 
