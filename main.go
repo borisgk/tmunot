@@ -18,5 +18,5 @@ func main() {
 }
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "This is a test")
+	fmt.Fprintln(w, "<html><head></head><body><center><h1>This is a test</h1></center></body></html>")
 }
