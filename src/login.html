@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Login</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="login-body">
+    <div class="login-container">
+        <h2>Welcome Back</h2>
+        <form id="loginForm" method="POST" action="/login">
+            <input type="hidden" name="csrf_token" value="<!-- CSRF_TOKEN -->">
+            <div class="md-text-field">
+                <input type="text" id="username" name="username" required autocomplete="username" placeholder=" ">
+                <label for="username">Username</label>
+            </div>
+            <div class="md-text-field">
+                <input type="password" id="password" name="password" required autocomplete="current-password" placeholder=" ">
+                <label for="password">Password</label>
+            </div>
+            <button type="submit" class="submit-btn"><span>Sign In</span></button>
+            <div class="error-message" id="errorMessage"><!-- ERROR_MESSAGE --></div>
+        </form>
+    </div>
+</body>
+</html>

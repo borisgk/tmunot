@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Gallery</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="gallery-body">
+    <h1>Image Gallery</h1>
+    <div class="grid" id="gallery-grid">
+<!-- GALLERY_CONTENT -->
+    </div>
+    
+    <div id="lightbox" class="lightbox" onclick="closeLightbox(event)">
+        <div class="loader"></div>
+        <span class="close-btn">&times;</span>
+        <img id="lightbox-img" src="" alt="Preview">
+    </div>
+
+    <a href="/upload" class="md-fab" title="Upload Images">+</a>
+
+    <script src="/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Photos</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="gallery-body">
+    <div class="upload-container">
+        <h2>Upload Photos</h2>
+        <p class="subtitle">Select or drag and drop your images to upload them to the gallery</p>
+        
+        <div id="dropzone" class="dropzone">
+            <svg viewBox="0 0 24 24">
+                <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+            </svg>
+            <p>Drag and drop images here</p>
+            <span>or click to browse from files</span>
+            <input type="file" id="file-input" multiple accept="image/*" style="display: none;">
+        </div>
+        
+        <h3 id="staged-title" class="staged-title">Staged Files</h3>
+        <div id="staged-list" class="staged-list">
+            <!-- Dynamic staged queue item list -->
+        </div>
+        
+        <div id="progress-container" class="progress-container">
+            <div id="active-upload-card" class="active-upload-card" style="display: none;">
+                <img id="active-upload-preview" src="" alt="Active Upload Preview">
+                <div class="active-upload-details">
+                    <div id="active-upload-name" class="active-upload-name">filename.jpg</div>
+                    <div id="active-upload-queue-status" class="active-upload-queue-status">File 1 of 5</div>
+                </div>
+            </div>
+            <div class="progress-header">
+                <span id="progress-status">Uploading...</span>
+                <span id="progress-percent">0%</span>
+            </div>
+            <div id="progress-track" class="progress-segmented-track">
+                <!-- Segments will be dynamically generated here -->
+            </div>
+        </div>
+        
+        <div class="error-message" id="error-message" style="margin-bottom: 1.5rem; text-align: center;"></div>
+        
+        <div class="upload-actions">
+            <a href="/" class="secondary-btn">Cancel</a>
+            <button id="upload-btn" class="primary-btn" disabled>Upload</button>
+        </div>
+    </div>
+
+    <script>
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('file-input');
+        const stagedList = document.getElementById('staged-list');
+        const stagedTitle = document.getElementById('staged-title');
+        const uploadBtn = document.getElementById('upload-btn');
+        const progressContainer = document.getElementById('progress-container');
+        const progressFill = document.getElementById('progress-fill');
+        const progressPercent = document.getElementById('progress-percent');
+        const progressStatus = document.getElementById('progress-status');
+        const errorMessage = document.getElementById('error-message');
+
+        let queuedFiles = [];
+
+        // Trigger file input click when dropzone is clicked
+        dropzone.addEventListener('click', () => fileInput.click());
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+            fileInput.value = ''; // reset to allow choosing same files
+        });
+
+        // Drag events
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropzone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropzone.classList.add('dragover');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropzone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('dragover');
+            }, false);
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            handleFiles(dt.files);
+        });
+
+        // Format bytes to human readable format
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Process newly added files
+        function handleFiles(files) {
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                if (!file.type.startsWith('image/')) {
+                    showError('Only image files are allowed.');
+                    continue;
+                }
+                
+                // Avoid duplicates in the visual queue
+                if (queuedFiles.some(f => f.name === file.name && f.size === file.size)) {
+                    continue;
+                }
+
+                queuedFiles.push(file);
+            }
+            updateQueueUI();
+        }
+
+        // Update the visual staged list
+        function updateQueueUI() {
+            stagedList.innerHTML = '';
+            
+            if (queuedFiles.length === 0) {
+                stagedTitle.style.display = 'none';
+                uploadBtn.disabled = true;
+                dropzone.style.display = 'flex'; // Restore drop zone
+                return;
+            }
+
+            stagedTitle.style.display = 'block';
+            stagedTitle.textContent = `Staged Files (${queuedFiles.length})`;
+            uploadBtn.disabled = false;
+            dropzone.style.display = 'none'; // Hide drop zone!
+
+            queuedFiles.forEach((file, index) => {
+                const item = document.createElement('div');
+                item.className = 'staged-item';
+
+                // Image preview thumbnail (with size safeguard to prevent CPU/RAM lockup on large files)
+                const img = document.createElement('img');
+                if (file.size > 5 * 1024 * 1024) {
+                    img.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%233858e9"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>`;
+                } else {
+                    img.src = URL.createObjectURL(file);
+                    img.onload = () => URL.revokeObjectURL(img.src); // Free memory
+                }
+
+                const details = document.createElement('div');
+                details.className = 'staged-item-details';
+
+                const name = document.createElement('div');
+                name.className = 'staged-item-name';
+                name.textContent = file.name;
+
+                const size = document.createElement('div');
+                size.className = 'staged-item-size';
+                size.textContent = formatBytes(file.size);
+
+                details.appendChild(name);
+                details.appendChild(size);
+
+                // Remove button with SVG trash icon
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'remove-btn';
+                removeBtn.title = 'Remove file';
+                removeBtn.innerHTML = `
+                    <svg viewBox="0 0 24 24">
+                        <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+                    </svg>
+                `;
+                removeBtn.addEventListener('click', () => removeFile(index));
+
+                item.appendChild(img);
+                item.appendChild(details);
+                item.appendChild(removeBtn);
+                stagedList.appendChild(item);
+            });
+        }
+
+        // Remove a file from queue
+        function removeFile(index) {
+            queuedFiles.splice(index, 1);
+            updateQueueUI();
+        }
+
+        // Display an error message
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorMessage.style.display = 'block';
+            setTimeout(() => {
+                errorMessage.textContent = '';
+            }, 6000);
+        }
+
+        let activeXhr = null;
+
+        // Sequential Dynamic Queue Uploader (Uploads one file at a time to show 150px live preview safely)
+        function uploadNextFile(index) {
+            if (index >= queuedFiles.length) {
+                // All uploads complete!
+                progressStatus.textContent = 'All uploads complete!';
+                
+                // Color all segment fills with primary success color
+                for (let i = 0; i < queuedFiles.length; i++) {
+                    const fill = document.getElementById(`segment-fill-${i}`);
+                    if (fill) fill.style.backgroundColor = 'var(--md-sys-color-primary)';
+                }
+                
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1000);
+                return;
+            }
+
+            const activeFile = queuedFiles[index];
+            
+            // 1. Update active file details in the M3 Card
+            const activeCard = document.getElementById('active-upload-card');
+            const activePreview = document.getElementById('active-upload-preview');
+            const activeName = document.getElementById('active-upload-name');
+            const activeQueue = document.getElementById('active-upload-queue-status');
+            
+            activeCard.style.display = 'flex';
+            activeName.textContent = activeFile.name;
+            activeQueue.textContent = `Uploading file ${index + 1} of ${queuedFiles.length}`;
+            
+            // Create object URL for 150px thumbnail
+            const previewUrl = URL.createObjectURL(activeFile);
+            activePreview.src = previewUrl;
+            
+            // 2. Prepare Form Data containing JUST this single file
+            const formData = new FormData();
+            formData.append('images', activeFile);
+
+            // 3. Initiate request
+            activeXhr = new XMLHttpRequest();
+            activeXhr.open('POST', '/upload', true);
+
+            // Progress tracking
+            activeXhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const percent = Math.round((e.loaded / e.total) * 100);
+                    
+                    // Update active file progress bar segment
+                    const currentFill = document.getElementById(`segment-fill-${index}`);
+                    if (currentFill) currentFill.style.width = percent + '%';
+                    
+                    // Ensure all previous segments are visually at 100%
+                    for (let i = 0; i < index; i++) {
+                        const completedFill = document.getElementById(`segment-fill-${i}`);
+                        if (completedFill) completedFill.style.width = '100%';
+                    }
+                    
+                    // Update overall queue percentage
+                    const overallPercent = Math.round(((index * 100) + percent) / queuedFiles.length);
+                    progressPercent.textContent = overallPercent + '%';
+                    progressStatus.textContent = `Uploading queue... ${overallPercent}%`;
+                }
+            });
+
+            // Load completion handler
+            activeXhr.addEventListener('load', () => {
+                // Free memory immediately by revoking the preview URL
+                URL.revokeObjectURL(previewUrl);
+
+                if (activeXhr.status >= 200 && activeXhr.status < 300) {
+                    // Mark this current segment as 100% complete
+                    const currentFill = document.getElementById(`segment-fill-${index}`);
+                    if (currentFill) currentFill.style.width = '100%';
+
+                    // Next file!
+                    uploadNextFile(index + 1);
+                } else {
+                    let errMsg = 'Upload failed. Server error.';
+                    try {
+                        const resp = JSON.parse(activeXhr.responseText);
+                        if (resp.error) errMsg = resp.error;
+                    } catch(e) {}
+                    resetUploadUI(errMsg);
+                }
+            });
+
+            // Network error
+            activeXhr.addEventListener('error', () => {
+                URL.revokeObjectURL(previewUrl);
+                resetUploadUI('Network error occurred during upload.');
+            });
+
+            activeXhr.send(formData);
+        }
+
+        // Upload the queue
+        uploadBtn.addEventListener('click', () => {
+            if (queuedFiles.length === 0) return;
+
+            errorMessage.textContent = '';
+            progressContainer.style.display = 'block';
+            uploadBtn.disabled = true;
+            dropzone.style.pointerEvents = 'none';
+            
+            // Hide the staged list and title during upload to keep focus on progress
+            stagedTitle.style.display = 'none';
+            stagedList.style.display = 'none';
+
+            // Dynamically generate progress segments based on queue size
+            const track = document.getElementById('progress-track');
+            track.innerHTML = '';
+            for (let i = 0; i < queuedFiles.length; i++) {
+                const segment = document.createElement('div');
+                segment.className = 'progress-segment-track';
+                segment.innerHTML = `<div class="progress-segment-fill" id="segment-fill-${i}"></div>`;
+                track.appendChild(segment);
+            }
+
+            // Start sequential queue upload
+            uploadNextFile(0);
+        });
+
+        // Reset UI after an error
+        function resetUploadUI(errorMsg) {
+            showError(errorMsg);
+            
+            // Hide the active preview card
+            const activeCard = document.getElementById('active-upload-card');
+            activeCard.style.display = 'none';
+            document.getElementById('active-upload-preview').src = '';
+
+            // Restore staged list and title for corrections
+            stagedTitle.style.display = 'block';
+            stagedList.style.display = 'flex';
+
+            progressContainer.style.display = 'none';
+            progressPercent.textContent = '0%';
+            progressStatus.textContent = 'Uploading...';
+            uploadBtn.disabled = false;
+            dropzone.style.pointerEvents = 'auto';
+            stagedList.style.pointerEvents = 'auto';
+        }
+    </script>
+</body>
+</html>
