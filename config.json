@@ -1,0 +1,19 @@
+{
+  "backend": "libvips",
+  "quality": 90,
+  "input_directory": "./input",
+  "outputs": [
+    {
+      "name": "previews",
+      "target_width": 1200,
+      "target_height": 1200,
+      "directory": "./output/previews"
+    },
+    {
+      "name": "thumbnails",
+      "target_width": 600,
+      "target_height": 600,
+      "directory": "./output/thumbnails"
+    }
+  ]
+}
