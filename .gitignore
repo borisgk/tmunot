@@ -1,0 +1,8 @@
+.zig-cache/
+input/
+output/
+zig-out/
+jwt_secret.bin
+config.json
+tmunot.code-workspace
+users.json
