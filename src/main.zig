@@ -34,5 +34,5 @@ pub fn main(init: std.process.Init) !void {
     defer auth_ctx.deinit();
 
     // 7. Start web server
-    try server.startServer(init.io, auth_ctx);
+    try server.startServer(init.io, auth_ctx, config);
 }

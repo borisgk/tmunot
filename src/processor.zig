@@ -1,9 +1,11 @@
 const std = @import("std");
 const config = @import("config.zig");
 const vips = @import("vips.zig");
+const exif = @import("exif.zig");
 
 pub const FileJob = struct {
     allocator: std.mem.Allocator,
+    io: std.Io,
     input_path: []const u8,
     filename: []const u8,
     outputs: []config.OutputConfig,
@@ -17,6 +19,17 @@ pub fn worker(job: *FileJob) void {
         job.allocator.free(job.filename);
         job.allocator.destroy(job);
     }
+
+    // Extract EXIF data in background thread first
+    const json_path = std.fmt.allocPrint(job.allocator, "{s}.json", .{job.input_path}) catch |err| {
+        std.debug.print("Failed to format EXIF json path: {}\n", .{err});
+        return;
+    };
+    defer job.allocator.free(json_path);
+
+    exif.extractExifAndSave(job.allocator, job.io, job.input_path, json_path) catch |err| {
+        std.debug.print("Failed to extract and save EXIF data: {}\n", .{err});
+    };
 
     const in_c = std.fmt.allocPrintSentinel(job.allocator, "{s}", .{job.input_path}, 0) catch |err| {
         std.debug.print("Failed to convert input path '{s}' to C string: {}\n", .{ job.input_path, err });
