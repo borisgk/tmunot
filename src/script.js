@@ -23,3 +23,15 @@ document.addEventListener('keydown', function(e) {
         closeLightbox({target: {id: 'lightbox'}});
     }
 });
+
+// M3 Sticky App Bar elevation shadow on scroll
+window.addEventListener('scroll', () => {
+    const header = document.querySelector('.md-top-app-bar');
+    if (header) {
+        if (window.scrollY > 0) {
+            header.classList.add('scrolled');
+        } else {
+            header.classList.remove('scrolled');
+        }
+    }
+});

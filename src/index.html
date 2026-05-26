@@ -7,10 +7,19 @@
     <link rel="stylesheet" href="/styles.css">
 </head>
 <body class="gallery-body">
-    <h1>Image Gallery</h1>
-    <div class="gallery" id="gallery-grid">
+    <header class="md-top-app-bar">
+        <div class="md-top-app-bar__left"></div>
+        <span class="md-top-app-bar__title">Image Gallery</span>
+        <div class="md-top-app-bar__actions">
+<!-- GALLERY_LOGOUT -->
+        </div>
+    </header>
+
+    <main class="gallery-container">
+        <div class="gallery" id="gallery-grid">
 <!-- GALLERY_CONTENT -->
-    </div>
+        </div>
+    </main>
     
     <div id="lightbox" class="lightbox" onclick="closeLightbox(event)">
         <div class="loader"></div>
