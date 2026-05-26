@@ -82,6 +82,7 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
         try req.respond(file_contents, .{
             .extra_headers = &.{
                 .{ .name = "content-type", .value = if (is_png) @as([]const u8, "image/png") else @as([]const u8, "image/jpeg") },
+                .{ .name = "cache-control", .value = "public, max-age=31536000, immutable" },
             },
         });
         return true;
@@ -93,6 +94,7 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
             try req.respond(@embedFile("../fonts/Roboto-Regular.ttf"), .{
                 .extra_headers = &.{
                     .{ .name = "content-type", .value = "font/ttf" },
+                    .{ .name = "cache-control", .value = "public, max-age=31536000, immutable" },
                 },
             });
             return true;
@@ -100,6 +102,7 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
             try req.respond(@embedFile("../fonts/Roboto-Medium.ttf"), .{
                 .extra_headers = &.{
                     .{ .name = "content-type", .value = "font/ttf" },
+                    .{ .name = "cache-control", .value = "public, max-age=31536000, immutable" },
                 },
             });
             return true;
@@ -107,6 +110,7 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
             try req.respond(@embedFile("../fonts/Roboto-Bold.ttf"), .{
                 .extra_headers = &.{
                     .{ .name = "content-type", .value = "font/ttf" },
+                    .{ .name = "cache-control", .value = "public, max-age=31536000, immutable" },
                 },
             });
             return true;
@@ -127,9 +131,14 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8) ![]u8 {
     // html is backed by the arena; no errdefer needed — arena.deinit() cleans it up.
 
     const template = @embedFile("../index_gen.html");
+    const lcp_placeholder = "<!-- LCP_PRELOAD -->";
     const logout_placeholder = "<!-- GALLERY_LOGOUT -->";
     const content_placeholder = "<!-- GALLERY_CONTENT -->";
 
+    const lcp_idx = std.mem.indexOf(u8, template, lcp_placeholder) orelse {
+        std.debug.print("Could not find LCP_PRELOAD in template\n", .{});
+        return error.InvalidTemplate;
+    };
     const logout_idx = std.mem.indexOf(u8, template, logout_placeholder) orelse {
         std.debug.print("Could not find GALLERY_LOGOUT in template\n", .{});
         return error.InvalidTemplate;
@@ -139,11 +148,28 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8) ![]u8 {
         return error.InvalidTemplate;
     };
 
-    const part1 = template[0..logout_idx];
-    const part2 = template[logout_idx + logout_placeholder.len .. content_idx];
-    const part3 = template[content_idx + content_placeholder.len ..];
+    const part1 = template[0..lcp_idx];
+    const part2 = template[lcp_idx + lcp_placeholder.len .. logout_idx];
+    const part3 = template[logout_idx + logout_placeholder.len .. content_idx];
+    const part4 = template[content_idx + content_placeholder.len ..];
+
+    // Retrieve user photos from SQLite chronologically.
+    // getUserPhotos allocates into alloc (the arena); the arena frees all of it on exit.
+    const photos = try db.getUserPhotos(username, alloc);
 
     try html.appendSlice(alloc, part1);
+
+    // Dynamic LCP Preload in HTML Head: If there are photos, preload the first thumbnail immediately
+    if (photos.len > 0) {
+        const first_photo = photos[0];
+        const preload_tag = try std.fmt.allocPrint(alloc,
+            "<link rel=\"preload\" as=\"image\" href=\"/thumbnails/{s}.{s}\" fetchpriority=\"high\">",
+            .{ first_photo.uuid, first_photo.extension }
+        );
+        try html.appendSlice(alloc, preload_tag);
+    }
+    
+    try html.appendSlice(alloc, part2);
 
     const logout_html = 
         \\  <form method="POST" action="/logout" style="margin: 0;">
@@ -156,36 +182,38 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8) ![]u8 {
     ;
     try html.appendSlice(alloc, logout_html);
 
-    try html.appendSlice(alloc, part2);
-
-    // Retrieve user photos from SQLite chronologically.
-    // getUserPhotos allocates into alloc (the arena); the arena frees all of it on exit.
-    const photos = try db.getUserPhotos(username, alloc);
+    try html.appendSlice(alloc, part3);
 
     // Render photos as flat siblings in a single flexbox container.
     // The browser dynamically wraps and justifies them with zero CLS using flex-grow & aspect-ratio.
-    for (photos) |r| {
+    for (photos, 0..) |r, idx| {
         const fw: f64 = if (r.width) |w| @floatFromInt(w) else 600.0;
         const fh: f64 = if (r.height) |h| @floatFromInt(h) else 400.0;
         // Clamp degenerate ratios (e.g. 0-dimension photos)
         const raw_ratio = fw / fh;
         const ratio = if (raw_ratio > 0.1 and raw_ratio < 10.0) raw_ratio else 1.5;
 
+        // Optimization: The first 12 images (approx. 2-3 rows) are treated as potentially above the fold.
+        // Eagerly loading them prevents them from being lazy-loaded on large/wide viewports.
+        // The first image still keeps fetchpriority="high" on its img tag for maximum prioritization.
+        const loading_attr = if (idx < 12) "" else " loading=\"lazy\"";
+        const priority_attr = if (idx == 0) " fetchpriority=\"high\"" else "";
+
         // Using flat list flexbox with ratio-based flex-basis for automatic responsive row packing
         const card = try std.fmt.allocPrint(alloc,
             \\        <div class="card" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h)); aspect-ratio:{d:.4};" onclick="openLightbox('/previews/{s}.{s}')">
-            \\            <img src="/thumbnails/{s}.{s}" alt="{s}" loading="lazy">
+            \\            <img src="/thumbnails/{s}.{s}" alt="{s}"{s}{s}>
             \\            <p>{s}</p>
             \\        </div>
             \\
-        , .{ ratio, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.filename, r.filename });
+        , .{ ratio, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename });
         try html.appendSlice(alloc, card);
     }
 
     // Append the dynamic spacer to prevent the last row from stretching
     try html.appendSlice(alloc, "        <div class=\"gallery-spacer\"></div>\n");
 
-    try html.appendSlice(alloc, part3);
+    try html.appendSlice(alloc, part4);
 
     // Copy the finished HTML into page_allocator memory — caller (server.zig) frees
     // it with `defer std.heap.page_allocator.free(html)`.
