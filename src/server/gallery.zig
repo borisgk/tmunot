@@ -42,7 +42,36 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
             try req.respond("Not Found", .{ .status = .not_found });
             return true;
         }
-        // arena owns all allocations; no manual defer-free needed
+
+        // Conditional Request validation for aggressive browser caching (F5/Reload support)
+        var if_none_match: ?[]const u8 = null;
+        var header_it = req.iterateHeaders();
+        while (header_it.next()) |header| {
+            if (std.ascii.eqlIgnoreCase(header.name, "if-none-match")) {
+                if_none_match = std.mem.trim(u8, header.value, " \"");
+            }
+        }
+
+        const etag_val = try std.fmt.allocPrint(alloc, "\"{s}\"", .{uuid});
+
+        if (if_none_match) |etag| {
+            var clean_etag = etag;
+            if (std.mem.startsWith(u8, clean_etag, "W/") or std.mem.startsWith(u8, clean_etag, "w/")) {
+                clean_etag = clean_etag[2..];
+            }
+            clean_etag = std.mem.trim(u8, clean_etag, " \"");
+
+            if (std.mem.eql(u8, clean_etag, uuid)) {
+                try req.respond("", .{
+                    .status = .not_modified,
+                    .extra_headers = &.{
+                        .{ .name = "Cache-Control", .value = "public, max-age=31536000, immutable" },
+                        .{ .name = "ETag", .value = etag_val },
+                    },
+                });
+                return true;
+            }
+        }
 
         // Reconstruct local chronological user path: photos/<username>/<type>/<year>/<month>/<uuid>.<extension>
         const full_path = try std.fmt.allocPrint(alloc, "photos/{s}/{s}/{s}/{s}/{s}.{s}", .{
@@ -81,8 +110,9 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
         const is_png = std.mem.eql(u8, loc.?.extension, "png");
         try req.respond(file_contents, .{
             .extra_headers = &.{
-                .{ .name = "content-type", .value = if (is_png) @as([]const u8, "image/png") else @as([]const u8, "image/jpeg") },
-                .{ .name = "cache-control", .value = "public, max-age=31536000, immutable" },
+                .{ .name = "Content-Type", .value = if (is_png) @as([]const u8, "image/png") else @as([]const u8, "image/jpeg") },
+                .{ .name = "Cache-Control", .value = "public, max-age=31536000, immutable" },
+                .{ .name = "ETag", .value = etag_val },
             },
         });
         return true;
@@ -93,24 +123,24 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
         if (std.mem.eql(u8, font_name, "Roboto-Regular.ttf")) {
             try req.respond(@embedFile("../fonts/Roboto-Regular.ttf"), .{
                 .extra_headers = &.{
-                    .{ .name = "content-type", .value = "font/ttf" },
-                    .{ .name = "cache-control", .value = "public, max-age=31536000, immutable" },
+                    .{ .name = "Content-Type", .value = "font/ttf" },
+                    .{ .name = "Cache-Control", .value = "public, max-age=31536000, immutable" },
                 },
             });
             return true;
         } else if (std.mem.eql(u8, font_name, "Roboto-Medium.ttf")) {
             try req.respond(@embedFile("../fonts/Roboto-Medium.ttf"), .{
                 .extra_headers = &.{
-                    .{ .name = "content-type", .value = "font/ttf" },
-                    .{ .name = "cache-control", .value = "public, max-age=31536000, immutable" },
+                    .{ .name = "Content-Type", .value = "font/ttf" },
+                    .{ .name = "Cache-Control", .value = "public, max-age=31536000, immutable" },
                 },
             });
             return true;
         } else if (std.mem.eql(u8, font_name, "Roboto-Bold.ttf")) {
             try req.respond(@embedFile("../fonts/Roboto-Bold.ttf"), .{
                 .extra_headers = &.{
-                    .{ .name = "content-type", .value = "font/ttf" },
-                    .{ .name = "cache-control", .value = "public, max-age=31536000, immutable" },
+                    .{ .name = "Content-Type", .value = "font/ttf" },
+                    .{ .name = "Cache-Control", .value = "public, max-age=31536000, immutable" },
                 },
             });
             return true;
