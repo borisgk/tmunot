@@ -1,26 +1,11 @@
 @font-face {
     font-family: 'Roboto';
     font-style: normal;
-    font-weight: 400;
+    font-weight: 100 1000;
     font-display: swap;
-    src: url('/fonts/Roboto-Regular.ttf') format('truetype');
+    src: url('/fonts/RobotoFlex-VariableFont.ttf') format('truetype');
 }
 
-@font-face {
-    font-family: 'Roboto';
-    font-style: normal;
-    font-weight: 500;
-    font-display: swap;
-    src: url('/fonts/Roboto-Medium.ttf') format('truetype');
-}
-
-@font-face {
-    font-family: 'Roboto';
-    font-style: normal;
-    font-weight: 700;
-    font-display: swap;
-    src: url('/fonts/Roboto-Bold.ttf') format('truetype');
-}
 
 :root {
     /* M3 Expressive Light Theme */
