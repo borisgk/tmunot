@@ -54,6 +54,8 @@
     
     --md-sys-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
     --md-sys-motion-duration-medium: 300ms;
+    
+    --target-h: 220px;
 }
 
 * {
@@ -82,28 +84,36 @@ h1 {
     color: var(--md-sys-color-primary);
 }
 
-.grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 2rem;
-    max-width: 1400px;
-    margin: 0 auto;
+/* Justified gallery layout — automatic responsive rows at equal height */
+.gallery {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    width: 100%;
 }
 
-/* M3 Elevated Card */
+/* Spacer at the end of the flat flex list to prevent the last row from stretching */
+.gallery-spacer {
+    flex: 9999 1 0px;
+    height: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    pointer-events: none;
+}
+
+/* M3 Elevated Card — fills its flex slot completely */
 .card {
     background: var(--md-sys-color-surface-container);
-    border-radius: var(--md-sys-shape-corner-extra-large);
-    padding: 1rem;
+    border-radius: var(--md-sys-shape-corner-extra-small);
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     transition: transform var(--md-sys-motion-duration-medium) var(--md-sys-motion-easing-standard), 
                 box-shadow var(--md-sys-motion-duration-medium) var(--md-sys-motion-easing-standard);
     cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
     position: relative;
     overflow: hidden;
+    min-width: 0;
+    /* flex and aspect-ratio are set via inline style per-card */
 }
 
 /* State Layer Overlay */
@@ -132,19 +142,32 @@ h1 {
 
 .card img {
     width: 100%;
-    height: 200px;
+    height: 100%;
     object-fit: cover;
-    border-radius: var(--md-sys-shape-corner-large);
-    margin-bottom: 1rem;
+    display: block;
+    border-radius: var(--md-sys-shape-corner-extra-small);
 }
 
+/* Filename gradient overlay — appears on hover */
 .card p {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
     margin: 0;
-    font-size: 1rem;
-    color: var(--md-sys-color-on-surface);
+    padding: 0.5rem 0.75rem;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.65));
+    color: #ffffff;
+    font-size: 0.8rem;
     font-weight: 500;
     word-break: break-all;
-    text-align: center;
+    text-align: left;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.card:hover p {
+    opacity: 1;
 }
 
 /* Lightbox */
@@ -169,11 +192,13 @@ h1 {
 }
 
 .lightbox img {
-    max-width: 90%;
-    max-height: 90vh;
-    border-radius: var(--md-sys-shape-corner-extra-large);
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-    transform: scale(0.9);
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+    box-shadow: none;
+    transform: scale(0.95);
     transition: transform var(--md-sys-motion-duration-medium) var(--md-sys-motion-easing-standard);
     object-fit: contain;
 }
@@ -192,6 +217,7 @@ h1 {
     cursor: pointer;
     opacity: 0.7;
     transition: opacity 0.2s;
+    z-index: 1010;
 }
 
 .close-btn:hover {
