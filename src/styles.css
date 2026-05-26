@@ -115,29 +115,37 @@ body {
     justify-self: end;
 }
 
-/* M3 Standard Error Outlined/Filled Button for Logout */
-.md-header-logout-btn {
-    padding: 0.5rem 1rem;
+/* M3 Tonal Icon Button for Logout */
+.md-header-logout-icon-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--md-sys-shape-corner-full);
+    border: none;
+    background: var(--md-sys-color-surface-container-high);
+    color: var(--md-sys-color-on-surface-variant);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s var(--md-sys-motion-easing-standard), 
+                color 0.2s var(--md-sys-motion-easing-standard),
+                transform 0.2s var(--md-sys-motion-easing-standard);
+}
+
+.md-header-logout-icon-btn svg {
+    width: 24px;
+    height: 24px;
+    fill: currentColor;
+}
+
+.md-header-logout-icon-btn:hover {
     background: var(--md-sys-color-error-container);
     color: var(--md-sys-color-on-error-container);
-    border: none;
-    border-radius: var(--md-sys-shape-corner-full);
-    cursor: pointer;
-    font-weight: 700;
-    font-family: inherit;
-    font-size: 0.9rem;
-    transition: transform 0.2s var(--md-sys-motion-easing-standard), 
-                background-color 0.2s var(--md-sys-motion-easing-standard);
+    transform: scale(1.08);
 }
 
-.md-header-logout-btn:hover {
-    transform: scale(1.05);
-    background: var(--md-sys-color-error);
-    color: var(--md-sys-color-on-error);
-}
-
-.md-header-logout-btn:active {
-    transform: scale(0.98);
+.md-header-logout-icon-btn:active {
+    transform: scale(0.95);
 }
 
 /* Justified gallery layout — automatic responsive rows at equal height */
