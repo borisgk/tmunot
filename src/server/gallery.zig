@@ -120,24 +120,8 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
 
     if (std.mem.startsWith(u8, target, "/fonts/")) {
         const font_name = target[7..];
-        if (std.mem.eql(u8, font_name, "Roboto-Regular.ttf")) {
-            try req.respond(@embedFile("../fonts/Roboto-Regular.ttf"), .{
-                .extra_headers = &.{
-                    .{ .name = "Content-Type", .value = "font/ttf" },
-                    .{ .name = "Cache-Control", .value = "public, max-age=31536000, immutable" },
-                },
-            });
-            return true;
-        } else if (std.mem.eql(u8, font_name, "Roboto-Medium.ttf")) {
-            try req.respond(@embedFile("../fonts/Roboto-Medium.ttf"), .{
-                .extra_headers = &.{
-                    .{ .name = "Content-Type", .value = "font/ttf" },
-                    .{ .name = "Cache-Control", .value = "public, max-age=31536000, immutable" },
-                },
-            });
-            return true;
-        } else if (std.mem.eql(u8, font_name, "Roboto-Bold.ttf")) {
-            try req.respond(@embedFile("../fonts/Roboto-Bold.ttf"), .{
+        if (std.mem.eql(u8, font_name, "RobotoFlex-VariableFont.ttf")) {
+            try req.respond(@embedFile("../fonts/RobotoFlex-VariableFont.ttf"), .{
                 .extra_headers = &.{
                     .{ .name = "Content-Type", .value = "font/ttf" },
                     .{ .name = "Cache-Control", .value = "public, max-age=31536000, immutable" },
