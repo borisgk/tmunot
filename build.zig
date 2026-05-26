@@ -17,6 +17,7 @@ pub fn build(b: *std.Build) void {
     // Link dynamic system library vips directly
     exe.root_module.linkSystemLibrary("vips", .{});
     exe.root_module.linkSystemLibrary("exif", .{});
+    exe.root_module.linkSystemLibrary("sqlite3", .{});
 
     // Run minification and embedding script before compiling the executable
     const minify_cmd = b.addSystemCommand(&.{ "python3", "scripts/minify.py" });

@@ -241,4 +241,25 @@ pub const AuthContext = struct {
         _ = base64.Encoder.encode(token_b64, &token_bytes);
         return token_b64;
     }
+
+    pub fn getUsernameFromJwt(self: *AuthContext, token: []const u8) ?[]const u8 {
+        if (!self.verifyJwt(token)) return null;
+
+        var parts = std.mem.splitScalar(u8, token, '.');
+        _ = parts.next() orelse return null;
+        const payload_b64 = parts.next() orelse return null;
+
+        const payload_size = base64.Decoder.calcSizeForSlice(payload_b64) catch return null;
+        const payload = self.allocator.alloc(u8, payload_size) catch return null;
+        defer self.allocator.free(payload);
+
+        base64.Decoder.decode(payload, payload_b64) catch return null;
+
+        // Parse username from payload: {"sub":"username","exp":123456}
+        const sub_idx = std.mem.indexOf(u8, payload, "\"sub\":\"") orelse return null;
+        const start = sub_idx + 7;
+        const end = std.mem.indexOfPos(u8, payload, start, "\"") orelse return null;
+
+        return self.allocator.dupe(u8, payload[start..end]) catch null;
+    }
 };

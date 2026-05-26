@@ -6,3 +6,9 @@ jwt_secret.bin
 config.json
 tmunot.code-workspace
 users.json
+photos/
+photos.db
+photos.db-shm
+photos.db-wal
+*.jpg
+

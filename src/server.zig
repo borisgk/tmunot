@@ -88,6 +88,9 @@ fn handleConnection(stream: std.Io.net.Stream, io: std.Io, auth_ctx: *auth.AuthC
 
 fn handleRequest(req: *std.http.Server.Request, io: std.Io, auth_ctx: *auth.AuthContext, config: config_mod.Config) !void {
     var is_authenticated = false;
+    var username: ?[]const u8 = null;
+    defer if (username) |u| auth_ctx.allocator.free(u);
+
     var cookie_csrf: []const u8 = "";
     var boundary_buf: [128]u8 = undefined;
     var multipart_boundary: []const u8 = "";
@@ -101,6 +104,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, auth_ctx: *auth.Auth
                     const token = trimmed[6..];
                     if (auth_ctx.verifyJwt(token)) {
                         is_authenticated = true;
+                        username = auth_ctx.getUsernameFromJwt(token);
                     }
                 } else if (std.mem.startsWith(u8, trimmed, "csrf_token=")) {
                     cookie_csrf = trimmed[11..];
@@ -124,12 +128,12 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, auth_ctx: *auth.Auth
     std.debug.print("Request: {s} {s}\n", .{ @tagName(req.head.method), target });
 
     // Route static assets, previews, thumbnails, and fonts first
-    const handled_static = try server_gallery.serveStaticFile(req, io, is_authenticated);
+    const handled_static = try server_gallery.serveStaticFile(auth_ctx.allocator, req, io, is_authenticated);
     if (handled_static) return;
 
     if (req.head.method == .GET and std.mem.eql(u8, target, "/")) {
         if (is_authenticated) {
-            const html = try server_gallery.generateGalleryHtml(io);
+            const html = try server_gallery.generateGalleryHtml(auth_ctx.allocator, username orelse "admin");
             defer std.heap.page_allocator.free(html);
             try req.respond(html, .{
                 .extra_headers = &.{
@@ -185,7 +189,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, auth_ctx: *auth.Auth
     }
 
     if (req.head.method == .POST and std.mem.eql(u8, target, "/upload")) {
-        try server_upload.handleUpload(req, io, auth_ctx, config, is_authenticated, multipart_boundary);
+        try server_upload.handleUpload(req, io, auth_ctx, config, is_authenticated, username, multipart_boundary);
         return;
     }
 

@@ -1,20 +1,60 @@
 const std = @import("std");
+const db = @import("../db.zig");
+const server = @import("../server.zig");
 
-pub fn serveStaticFile(req: *std.http.Server.Request, io: std.Io, is_authenticated: bool) !bool {
+pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Request, io: std.Io, is_authenticated: bool) !bool {
     const target = req.head.target;
-    
+
     if (std.mem.startsWith(u8, target, "/thumbnails/") or std.mem.startsWith(u8, target, "/previews/")) {
         if (!is_authenticated) {
             try req.respond("Unauthorized", .{ .status = .unauthorized });
             return true;
         }
 
-        var path_buf: [1024]u8 = undefined;
-        const relative_path = target[1..];
-        const full_path = std.fmt.bufPrint(&path_buf, "output/{s}", .{relative_path}) catch {
-            try req.respond("Path too long", .{ .status = .bad_request });
+        // Decode URL encoding (e.g. %20 -> space)
+        const decoded_target = try server.decodeUrl(allocator, target);
+        defer allocator.free(decoded_target);
+
+        var type_segment: []const u8 = undefined;
+        var suffix: []const u8 = undefined;
+        if (std.mem.startsWith(u8, decoded_target, "/thumbnails/")) {
+            type_segment = "thumbnails";
+            suffix = decoded_target[12..];
+        } else {
+            type_segment = "previews";
+            suffix = decoded_target[10..];
+        }
+
+        // Suffix is "<uuid>.<ext>". Extract uuid (everything before the dot)
+        const dot_idx = std.mem.indexOfScalar(u8, suffix, '.') orelse {
+            try req.respond("Bad Request", .{ .status = .bad_request });
             return true;
         };
+        const uuid = suffix[0..dot_idx];
+
+        // Retrieve properties from SQLite
+        const loc = try db.getPhotoLocation(uuid, allocator);
+        if (loc == null) {
+            try req.respond("Not Found", .{ .status = .not_found });
+            return true;
+        }
+        defer {
+            allocator.free(loc.?.username);
+            allocator.free(loc.?.year);
+            allocator.free(loc.?.month);
+            allocator.free(loc.?.extension);
+        }
+
+        // Reconstruct local chronological user path: photos/<username>/<type>/<year>/<month>/<uuid>.<extension>
+        const full_path = try std.fmt.allocPrint(allocator, "photos/{s}/{s}/{s}/{s}/{s}.{s}", .{
+            loc.?.username,
+            type_segment,
+            loc.?.year,
+            loc.?.month,
+            uuid,
+            loc.?.extension,
+        });
+        defer allocator.free(full_path);
 
         var file = std.Io.Dir.cwd().openFile(io, full_path, .{}) catch {
             try req.respond("Not Found", .{ .status = .not_found });
@@ -27,27 +67,28 @@ pub fn serveStaticFile(req: *std.http.Server.Request, io: std.Io, is_authenticat
             return true;
         };
 
-        const file_contents = std.heap.page_allocator.alloc(u8, @intCast(stat.size)) catch {
+        const file_contents = allocator.alloc(u8, @intCast(stat.size)) catch {
             try req.respond("Internal Error", .{ .status = .internal_server_error });
             return true;
         };
-        defer std.heap.page_allocator.free(file_contents);
+        defer allocator.free(file_contents);
 
         var reader = file.reader(io, &.{});
         reader.interface.readSliceAll(file_contents) catch |err| {
-            std.debug.print("Failed to read file '{s}': {}\n", .{full_path, err});
+            std.debug.print("Failed to read file '{s}': {}\n", .{ full_path, err });
             try req.respond("Error reading file", .{ .status = .internal_server_error });
             return true;
         };
 
+        const is_png = std.mem.eql(u8, loc.?.extension, "png");
         try req.respond(file_contents, .{
             .extra_headers = &.{
-                .{ .name = "content-type", .value = if (std.mem.endsWith(u8, full_path, ".png")) @as([]const u8, "image/png") else @as([]const u8, "image/jpeg") },
+                .{ .name = "content-type", .value = if (is_png) @as([]const u8, "image/png") else @as([]const u8, "image/jpeg") },
             },
         });
         return true;
     }
-    
+
     if (std.mem.startsWith(u8, target, "/fonts/")) {
         const font_name = target[7..];
         if (std.mem.eql(u8, font_name, "Roboto-Regular.ttf")) {
@@ -73,12 +114,11 @@ pub fn serveStaticFile(req: *std.http.Server.Request, io: std.Io, is_authenticat
             return true;
         }
     }
-    
+
     return false;
 }
 
-pub fn generateGalleryHtml(io: std.Io) ![]u8 {
-    const allocator = std.heap.page_allocator;
+pub fn generateGalleryHtml(allocator: std.mem.Allocator, username: []const u8) ![]u8 {
     var html = std.ArrayList(u8).empty;
     errdefer html.deinit(allocator);
 
@@ -103,21 +143,33 @@ pub fn generateGalleryHtml(io: std.Io) ![]u8 {
     ;
     try html.appendSlice(allocator, logout_html);
 
-    const cwd = std.Io.Dir.cwd();
-    var dir = cwd.openDir(io, "output/thumbnails", .{ .iterate = true }) catch return html.toOwnedSlice(allocator);
-    defer dir.close(io);
-    
-    var iter = dir.iterate();
-    while (try iter.next(io)) |entry| {
-        if (entry.kind == .file) {
-            const card = try std.fmt.allocPrint(allocator,
-                \\        <div class="card" onclick="openLightbox('/previews/{s}')">
-                \\            <img src="/thumbnails/{s}" alt="{s}" loading="lazy">
-                \\            <p>{s}</p>
-                \\        </div>
-            , .{ entry.name, entry.name, entry.name, entry.name });
-            try html.appendSlice(allocator, card);
+    // Retrieve user photos from SQLite chronologically
+    const photos = try db.getUserPhotos(username, allocator);
+    defer {
+        for (photos) |r| {
+            allocator.free(r.uuid);
+            allocator.free(r.username);
+            allocator.free(r.filename);
+            allocator.free(r.extension);
+            allocator.free(r.year);
+            allocator.free(r.month);
+            allocator.free(r.day);
+            if (r.shooting_date) |sd| allocator.free(sd);
+            allocator.free(r.upload_date);
         }
+        allocator.free(photos);
+    }
+
+    for (photos) |r| {
+        // Output gallery card displaying the original human-readable filename, but routes securely via UUID endpoints
+        const card = try std.fmt.allocPrint(allocator,
+            \\        <div class="card" onclick="openLightbox('/previews/{s}.{s}')">
+            \\            <img src="/thumbnails/{s}.{s}" alt="{s}" loading="lazy">
+            \\            <p>{s}</p>
+            \\        </div>
+        , .{ r.uuid, r.extension, r.uuid, r.extension, r.filename, r.filename });
+        defer allocator.free(card);
+        try html.appendSlice(allocator, card);
     }
 
     try html.appendSlice(allocator, footer);

@@ -57,3 +57,8 @@ pub extern fn vips_image_write_to_file(
 ) c_int;
 
 pub extern fn mkdir(pathname: [*c]const u8, mode: c_uint) c_int;
+
+pub extern fn vips_image_new_from_buffer(buf: ?*const anyopaque, len: usize, option_string: [*c]const u8, ...) ?*VipsImage;
+pub extern fn vips_thumbnail_buffer(buf: ?*const anyopaque, len: usize, out: *?*VipsImage, width: c_int, ...) c_int;
+pub extern fn vips_image_get_width(image: ?*VipsImage) c_int;
+pub extern fn vips_image_get_height(image: ?*VipsImage) c_int;
