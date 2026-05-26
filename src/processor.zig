@@ -1,9 +1,9 @@
 const std = @import("std");
 const vips = @import("vips.zig");
+const logger = @import("logger.zig");
 
 pub const FileJob = struct {
     allocator: std.mem.Allocator,
-    io: std.Io,
     buffer: []const u8,         // Memory buffer of original image
     uuid: []const u8,           // Photo UUID
     username: []const u8,       // Username of the owner
@@ -11,7 +11,27 @@ pub const FileJob = struct {
     month: []const u8,          // Chronological month
     extension: []const u8,      // Lowercase file extension
     quality: i32,
+    t_start: f64,
 };
+
+fn makeDirPathSync(allocator: std.mem.Allocator, target_dir: []const u8) !void {
+    var it = std.mem.splitScalar(u8, target_dir, '/');
+    var current_path = std.ArrayList(u8).empty;
+    defer current_path.deinit(allocator);
+
+    while (it.next()) |component| {
+        if (component.len == 0) continue;
+        if (current_path.items.len > 0) {
+            try current_path.append(allocator, '/');
+        }
+        try current_path.appendSlice(allocator, component);
+
+        const path_c = try std.fmt.allocPrintSentinel(allocator, "{s}", .{current_path.items}, 0);
+        defer allocator.free(path_c);
+
+        _ = vips.mkdir(path_c.ptr, 0o777);
+    }
+}
 
 pub fn worker(job: *FileJob) void {
     const t_start = vips.getThreadCpuMillis();
@@ -46,9 +66,8 @@ pub fn worker(job: *FileJob) void {
         };
         defer job.allocator.free(target_dir);
 
-        // Recursively create target folder
-        const cwd = std.Io.Dir.cwd();
-        cwd.createDirPath(job.io, target_dir) catch |err| {
+        // Recursively create target folder using standard synchronous filesystem call
+        makeDirPathSync(job.allocator, target_dir) catch |err| {
             std.debug.print("Failed to recursively create target path '{s}': {}\n", .{ target_dir, err });
             continue;
         };
@@ -80,6 +99,8 @@ pub fn worker(job: *FileJob) void {
                 @as(c_int, target.height),
                 @as(?*anyopaque, null),
             );
+            const t1 = vips.getWallMillis();
+            logger.logEvent(job.uuid, "vips_thumbnail_buffer completed", job.t_start, t1);
 
             if (res != 0) {
                 std.debug.print("Failed to read and resize image from buffer: {s}\n", .{vips.vips_error_buffer()});
@@ -90,6 +111,8 @@ pub fn worker(job: *FileJob) void {
             const mem_img = vips.vips_image_copy_memory(next_img);
             if (next_img) |img| vips.g_object_unref(img);
             next_img = mem_img;
+            const t2 = vips.getWallMillis();
+            logger.logEvent(job.uuid, "vips_image_copy_memory completed", job.t_start, t2);
         } else {
             // Subsequent outputs: scale from the previous image in memory
             const res = vips.vips_thumbnail_image(
@@ -100,6 +123,8 @@ pub fn worker(job: *FileJob) void {
                 @as(c_int, target.height),
                 @as(?*anyopaque, null),
             );
+            const t1 = vips.getWallMillis();
+            logger.logEvent(job.uuid, "vips_thumbnail_image completed", job.t_start, t1);
 
             if (res != 0) {
                 std.debug.print("Failed to scale image down for '{s}': {s}\n", .{target.name, vips.vips_error_buffer()});
@@ -109,11 +134,20 @@ pub fn worker(job: *FileJob) void {
         }
 
         const write_res = vips.vips_image_write_to_file(next_img, out_c.ptr, @as(?*anyopaque, null));
+        const t4 = vips.getWallMillis();
 
         if (write_res != 0) {
             std.debug.print("Failed to save image '{s}': {s}\n", .{ output_path, vips.vips_error_buffer() });
         } else {
             std.debug.print("[{s}] Resized: {s}.{s} -> {s}\n", .{ target.name, job.uuid, job.extension, output_path });
+            const t_created = vips.getWallMillis();
+            if (std.mem.eql(u8, target.name, "previews")) {
+                logger.logEvent(job.uuid, "vips_image_write_to_file completed (previews)", job.t_start, t4);
+                logger.logEvent(job.uuid, "preview created", job.t_start, t_created);
+            } else if (std.mem.eql(u8, target.name, "thumbnails")) {
+                logger.logEvent(job.uuid, "vips_image_write_to_file completed (thumbnails)", job.t_start, t4);
+                logger.logEvent(job.uuid, "thumbnails created", job.t_start, t_created);
+            }
         }
 
         if (current_img) |img| {

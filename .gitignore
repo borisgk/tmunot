@@ -11,4 +11,5 @@ photos.db
 photos.db-shm
 photos.db-wal
 *.jpg
+upload_debug.log
 

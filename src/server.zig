@@ -50,18 +50,20 @@ pub fn startServer(io: std.Io, auth_ctx: *auth.AuthContext, config: config_mod.C
 
     std.debug.print("Starting web server on http://localhost:3001\n", .{});
 
+    var connection_group = std.Io.Group.init;
+    defer connection_group.cancel(io);
+
     while (true) {
         const stream = listener.accept(io) catch |err| {
             std.debug.print("Failed to accept connection: {}\n", .{err});
             continue;
         };
 
-        const thread = std.Thread.spawn(.{}, handleConnection, .{ stream, io, auth_ctx, config }) catch |err| {
-            std.debug.print("Failed to spawn thread: {}\n", .{err});
+        connection_group.concurrent(io, handleConnection, .{ stream, io, auth_ctx, config }) catch |err| {
+            std.debug.print("Failed to spawn concurrent connection handler: {}\n", .{err});
             stream.close(io);
             continue;
         };
-        thread.detach();
     }
 }
 
