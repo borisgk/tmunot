@@ -151,16 +151,28 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8) ![]u8 {
     // getUserPhotos allocates into alloc (the arena); the arena frees all of it on exit.
     const photos = try db.getUserPhotos(username, alloc);
 
+    // Render photos as flat siblings in a single flexbox container.
+    // The browser dynamically wraps and justifies them with zero CLS using flex-grow & aspect-ratio.
     for (photos) |r| {
-        // Output gallery card displaying the original human-readable filename, but routes securely via UUID endpoints
+        const fw: f64 = if (r.width) |w| @floatFromInt(w) else 600.0;
+        const fh: f64 = if (r.height) |h| @floatFromInt(h) else 400.0;
+        // Clamp degenerate ratios (e.g. 0-dimension photos)
+        const raw_ratio = fw / fh;
+        const ratio = if (raw_ratio > 0.1 and raw_ratio < 10.0) raw_ratio else 1.5;
+
+        // Using flat list flexbox with ratio-based flex-basis for automatic responsive row packing
         const card = try std.fmt.allocPrint(alloc,
-            \\        <div class="card" onclick="openLightbox('/previews/{s}.{s}')">
+            \\        <div class="card" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h)); aspect-ratio:{d:.4};" onclick="openLightbox('/previews/{s}.{s}')">
             \\            <img src="/thumbnails/{s}.{s}" alt="{s}" loading="lazy">
             \\            <p>{s}</p>
             \\        </div>
-        , .{ r.uuid, r.extension, r.uuid, r.extension, r.filename, r.filename });
+            \\
+        , .{ ratio, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.filename, r.filename });
         try html.appendSlice(alloc, card);
     }
+
+    // Append the dynamic spacer to prevent the last row from stretching
+    try html.appendSlice(alloc, "        <div class=\"gallery-spacer\"></div>\n");
 
     try html.appendSlice(alloc, footer);
 
