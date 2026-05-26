@@ -5,6 +5,7 @@ const processor = @import("../processor.zig");
 const exif = @import("../exif.zig");
 const vips = @import("../vips.zig");
 const db = @import("../db.zig");
+const logger = @import("../logger.zig");
 
 fn generateUuid(allocator: std.mem.Allocator, io: std.Io) ![]const u8 {
     var bytes: [16]u8 = undefined;
@@ -93,6 +94,7 @@ pub fn handleUpload(
         return;
     };
     defer auth_ctx.allocator.free(body);
+    const t_received = vips.getWallMillis();
 
     // Parse boundary headers
     const header_end = std.mem.indexOf(u8, body, "\r\n\r\n") orelse {
@@ -143,6 +145,7 @@ pub fn handleUpload(
     // 3. Extract EXIF data from RAM buffer
     const metadata = try exif.extractExifFromBuffer(auth_ctx.allocator, file_content);
     defer if (metadata.shooting_date) |sd| auth_ctx.allocator.free(sd);
+    const t_exif = vips.getWallMillis();
 
     // 4. Resolve calendar metrics (fall back to current time if EXIF is missing)
     const current_time = try getCurrentDateTime(auth_ctx.allocator);
@@ -180,6 +183,9 @@ pub fn handleUpload(
     const uuid = try generateUuid(auth_ctx.allocator, io);
     defer auth_ctx.allocator.free(uuid);
 
+    logger.logEvent(uuid, "file received", t_received, t_received);
+    logger.logEvent(uuid, "exif read", t_received, t_exif);
+
     // 7. Write original photo to photos/<username>/originals/<year>/<month>/<uuid>.<ext>
     const orig_dir = try std.fmt.allocPrint(auth_ctx.allocator, "photos/{s}/originals/{s}/{s}", .{ user, year, month });
     defer auth_ctx.allocator.free(orig_dir);
@@ -216,6 +222,8 @@ pub fn handleUpload(
         .height = height,
     };
     try db.insertPhoto(record);
+    const t_db = vips.getWallMillis();
+    logger.logEvent(uuid, "database updated", t_received, t_db);
 
     // 9. Dispatch resizing worker with duplicated buffer copy
     const buffer_copy = try auth_ctx.allocator.dupe(u8, file_content);
@@ -224,7 +232,6 @@ pub fn handleUpload(
     const job = try auth_ctx.allocator.create(processor.FileJob);
     job.* = .{
         .allocator = auth_ctx.allocator,
-        .io = io,
         .buffer = buffer_copy,
         .uuid = try auth_ctx.allocator.dupe(u8, uuid),
         .username = try auth_ctx.allocator.dupe(u8, user),
@@ -232,6 +239,7 @@ pub fn handleUpload(
         .month = try auth_ctx.allocator.dupe(u8, month),
         .extension = try auth_ctx.allocator.dupe(u8, ext_clean),
         .quality = config.quality,
+        .t_start = t_received,
     };
 
     const thread = try std.Thread.spawn(.{}, processor.worker, .{job});

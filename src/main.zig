@@ -7,7 +7,21 @@ const auth = @import("auth.zig");
 const db = @import("db.zig");
 
 pub fn main(init: std.process.Init) !void {
-    const io = init.io;
+    // The default Threaded IO caps concurrent tasks at cpu_count-1.
+    // For a web server this means only (N-1) connections can be handled
+    // simultaneously — uploads stall once the limit is hit.
+    // We create our own Threaded instance with unlimited async concurrency.
+    var threaded = std.Io.Threaded.init(std.heap.page_allocator, .{
+        .async_limit = .unlimited,
+    });
+    defer threaded.deinit();
+    const io = threaded.io();
+
+    if (vips.vips_init("tmunot") != 0) {
+        std.debug.print("Failed to initialize libvips\n", .{});
+        return error.VipsInitFailed;
+    }
+    defer vips.vips_shutdown();
 
     var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();

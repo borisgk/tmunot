@@ -199,18 +199,19 @@
 
         let activeXhr = null;
 
-        // Sequential Dynamic Queue Uploader (Uploads one file at a time to show 150px live preview safely)
+        // Pipelined Queue Uploader: next file starts sending as soon as current file is fully sent,
+        // without waiting for the server response. Server responses are checked in parallel for errors.
         function uploadNextFile(index) {
             if (index >= queuedFiles.length) {
-                // All uploads complete!
+                // All files sent — update UI
                 progressStatus.textContent = 'All uploads complete!';
-                
+
                 // Color all segment fills with primary success color
                 for (let i = 0; i < queuedFiles.length; i++) {
                     const fill = document.getElementById(`segment-fill-${i}`);
                     if (fill) fill.style.backgroundColor = 'var(--md-sys-color-primary)';
                 }
-                
+
                 setTimeout(() => {
                     window.location.href = '/';
                 }, 1000);
@@ -218,44 +219,45 @@
             }
 
             const activeFile = queuedFiles[index];
-            
+
             // 1. Update active file details in the M3 Card
             const activeCard = document.getElementById('active-upload-card');
             const activePreview = document.getElementById('active-upload-preview');
             const activeName = document.getElementById('active-upload-name');
             const activeQueue = document.getElementById('active-upload-queue-status');
-            
+
             activeCard.style.display = 'flex';
             activeName.textContent = activeFile.name;
             activeQueue.textContent = `Uploading file ${index + 1} of ${queuedFiles.length}`;
-            
+
             // Create object URL for 150px thumbnail
             const previewUrl = URL.createObjectURL(activeFile);
             activePreview.src = previewUrl;
-            
+
             // 2. Prepare Form Data containing JUST this single file
             const formData = new FormData();
             formData.append('images', activeFile);
 
             // 3. Initiate request
-            activeXhr = new XMLHttpRequest();
-            activeXhr.open('POST', '/upload', true);
+            const xhr = new XMLHttpRequest();
+            activeXhr = xhr;
+            xhr.open('POST', '/upload', true);
 
             // Progress tracking
-            activeXhr.upload.addEventListener('progress', (e) => {
+            xhr.upload.addEventListener('progress', (e) => {
                 if (e.lengthComputable) {
                     const percent = Math.round((e.loaded / e.total) * 100);
-                    
+
                     // Update active file progress bar segment
                     const currentFill = document.getElementById(`segment-fill-${index}`);
                     if (currentFill) currentFill.style.width = percent + '%';
-                    
+
                     // Ensure all previous segments are visually at 100%
                     for (let i = 0; i < index; i++) {
                         const completedFill = document.getElementById(`segment-fill-${i}`);
                         if (completedFill) completedFill.style.width = '100%';
                     }
-                    
+
                     // Update overall queue percentage
                     const overallPercent = Math.round(((index * 100) + percent) / queuedFiles.length);
                     progressPercent.textContent = overallPercent + '%';
@@ -263,22 +265,23 @@
                 }
             });
 
-            // Load completion handler
-            activeXhr.addEventListener('load', () => {
-                // Free memory immediately by revoking the preview URL
+            // Upload body fully sent to server — pipeline: kick off next file immediately
+            // without waiting for the HTTP response from the server.
+            xhr.upload.addEventListener('load', () => {
                 URL.revokeObjectURL(previewUrl);
+                // Mark this segment visually complete right away
+                const currentFill = document.getElementById(`segment-fill-${index}`);
+                if (currentFill) currentFill.style.width = '100%';
+                // Start next file without any delay
+                uploadNextFile(index + 1);
+            });
 
-                if (activeXhr.status >= 200 && activeXhr.status < 300) {
-                    // Mark this current segment as 100% complete
-                    const currentFill = document.getElementById(`segment-fill-${index}`);
-                    if (currentFill) currentFill.style.width = '100%';
-
-                    // Next file!
-                    uploadNextFile(index + 1);
-                } else {
+            // Server response handler — only used for error detection, runs in parallel
+            xhr.addEventListener('load', () => {
+                if (xhr.status < 200 || xhr.status >= 300) {
                     let errMsg = 'Upload failed. Server error.';
                     try {
-                        const resp = JSON.parse(activeXhr.responseText);
+                        const resp = JSON.parse(xhr.responseText);
                         if (resp.error) errMsg = resp.error;
                     } catch(e) {}
                     resetUploadUI(errMsg);
@@ -286,12 +289,12 @@
             });
 
             // Network error
-            activeXhr.addEventListener('error', () => {
+            xhr.addEventListener('error', () => {
                 URL.revokeObjectURL(previewUrl);
                 resetUploadUI('Network error occurred during upload.');
             });
 
-            activeXhr.send(formData);
+            xhr.send(formData);
         }
 
         // Upload the queue
