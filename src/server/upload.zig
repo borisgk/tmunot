@@ -1,5 +1,5 @@
 const std = @import("std");
-const auth = @import("../auth.zig");
+
 const config_mod = @import("../config.zig");
 const processor = @import("../processor.zig");
 const exif = @import("../exif.zig");
@@ -66,7 +66,7 @@ fn getCurrentDateTime(allocator: std.mem.Allocator) !struct { year: []const u8, 
 pub fn handleUpload(
     req: *std.http.Server.Request,
     io: std.Io,
-    auth_ctx: *auth.AuthContext,
+    req_alloc: std.mem.Allocator,
     config: config_mod.Config,
     is_authenticated: bool,
     username: ?[]const u8,
@@ -82,18 +82,17 @@ pub fn handleUpload(
         return;
     }
 
-    const user = try auth_ctx.allocator.dupe(u8, username.?);
-    defer auth_ctx.allocator.free(user);
+    const user = try req_alloc.dupe(u8, username.?);
 
     // Read the multipart body (allowing up to 50MB)
     var buf: [1024]u8 = undefined;
     var r = req.readerExpectNone(&buf);
-    const body = r.allocRemaining(auth_ctx.allocator, .limited(50 * 1024 * 1024)) catch |err| {
+    const body = r.allocRemaining(req_alloc, .limited(50 * 1024 * 1024)) catch |err| {
         std.debug.print("Error reading body: {}\n", .{err});
         try req.respond("Request body too large or error reading", .{ .status = .payload_too_large });
         return;
     };
-    defer auth_ctx.allocator.free(body);
+    // body and user are in req_alloc arena, freed on function return.
     const t_received = vips.getWallMillis();
 
     // Parse boundary headers
@@ -123,8 +122,7 @@ pub fn handleUpload(
     }
 
     // Construct ending boundary delimiter (\r\n--{boundary})
-    const delimiter = try std.fmt.allocPrint(auth_ctx.allocator, "\r\n--{s}", .{multipart_boundary});
-    defer auth_ctx.allocator.free(delimiter);
+    const delimiter = try std.fmt.allocPrint(req_alloc, "\r\n--{s}", .{multipart_boundary});
 
     const file_start = header_end + 4;
     const delimiter_idx = std.mem.indexOf(u8, body[file_start..], delimiter) orelse {
@@ -135,24 +133,24 @@ pub fn handleUpload(
 
     // 2. Determine target file extension
     const ext = std.fs.path.extension(clean_filename);
-    var ext_lower = try auth_ctx.allocator.alloc(u8, ext.len);
-    defer auth_ctx.allocator.free(ext_lower);
+    var ext_lower = try req_alloc.alloc(u8, ext.len);
+    defer req_alloc.free(ext_lower);
     for (ext, 0..) |c, i| {
         ext_lower[i] = std.ascii.toLower(c);
     }
     const ext_clean = if (std.mem.startsWith(u8, ext_lower, ".")) ext_lower[1..] else ext_lower;
 
     // 3. Extract EXIF data from RAM buffer
-    const metadata = try exif.extractExifFromBuffer(auth_ctx.allocator, file_content);
-    defer if (metadata.shooting_date) |sd| auth_ctx.allocator.free(sd);
+    const metadata = try exif.extractExifFromBuffer(req_alloc, file_content);
+    defer if (metadata.shooting_date) |sd| req_alloc.free(sd);
     const t_exif = vips.getWallMillis();
 
     // 4. Resolve calendar metrics (fall back to current time if EXIF is missing)
-    const current_time = try getCurrentDateTime(auth_ctx.allocator);
-    defer auth_ctx.allocator.free(current_time.year);
-    defer auth_ctx.allocator.free(current_time.month);
-    defer auth_ctx.allocator.free(current_time.day);
-    defer auth_ctx.allocator.free(current_time.iso_str);
+    const current_time = try getCurrentDateTime(req_alloc);
+    defer req_alloc.free(current_time.year);
+    defer req_alloc.free(current_time.month);
+    defer req_alloc.free(current_time.day);
+    defer req_alloc.free(current_time.iso_str);
 
     var year = current_time.year;
     var month = current_time.month;
@@ -180,15 +178,15 @@ pub fn handleUpload(
     }
 
     // 6. Generate UUID
-    const uuid = try generateUuid(auth_ctx.allocator, io);
-    defer auth_ctx.allocator.free(uuid);
+    const uuid = try generateUuid(req_alloc, io);
+    defer req_alloc.free(uuid);
 
     logger.logEvent(uuid, "file received", t_received, t_received);
     logger.logEvent(uuid, "exif read", t_received, t_exif);
 
     // 7. Write original photo to photos/<username>/originals/<year>/<month>/<uuid>.<ext>
-    const orig_dir = try std.fmt.allocPrint(auth_ctx.allocator, "photos/{s}/originals/{s}/{s}", .{ user, year, month });
-    defer auth_ctx.allocator.free(orig_dir);
+    const orig_dir = try std.fmt.allocPrint(req_alloc, "photos/{s}/originals/{s}/{s}", .{ user, year, month });
+    defer req_alloc.free(orig_dir);
 
     const cwd = std.Io.Dir.cwd();
     cwd.createDirPath(io, orig_dir) catch |err| {
@@ -197,8 +195,8 @@ pub fn handleUpload(
         return;
     };
 
-    const orig_path = try std.fmt.allocPrint(auth_ctx.allocator, "{s}/{s}.{s}", .{ orig_dir, uuid, ext_clean });
-    defer auth_ctx.allocator.free(orig_path);
+    const orig_path = try std.fmt.allocPrint(req_alloc, "{s}/{s}.{s}", .{ orig_dir, uuid, ext_clean });
+    defer req_alloc.free(orig_path);
 
     var file = try cwd.createFile(io, orig_path, .{});
     defer file.close(io);
@@ -225,19 +223,23 @@ pub fn handleUpload(
     const t_db = vips.getWallMillis();
     logger.logEvent(uuid, "database updated", t_received, t_db);
 
-    // 9. Dispatch resizing worker with duplicated buffer copy
-    const buffer_copy = try auth_ctx.allocator.dupe(u8, file_content);
-    errdefer auth_ctx.allocator.free(buffer_copy);
+    // 9. Dispatch resizing worker with duplicated buffer copy.
+    // The worker runs in a detached thread and outlives this request handler.
+    // We use page_allocator for the job and all its fields so the worker never
+    // touches the shared GPA or the req_alloc arena (which is freed on return).
+    const job_alloc = std.heap.page_allocator;
+    const buffer_copy = try job_alloc.dupe(u8, file_content);
+    errdefer job_alloc.free(buffer_copy);
 
-    const job = try auth_ctx.allocator.create(processor.FileJob);
+    const job = try job_alloc.create(processor.FileJob);
     job.* = .{
-        .allocator = auth_ctx.allocator,
+        .allocator = job_alloc,
         .buffer = buffer_copy,
-        .uuid = try auth_ctx.allocator.dupe(u8, uuid),
-        .username = try auth_ctx.allocator.dupe(u8, user),
-        .year = try auth_ctx.allocator.dupe(u8, year),
-        .month = try auth_ctx.allocator.dupe(u8, month),
-        .extension = try auth_ctx.allocator.dupe(u8, ext_clean),
+        .uuid = try job_alloc.dupe(u8, uuid),
+        .username = try job_alloc.dupe(u8, user),
+        .year = try job_alloc.dupe(u8, year),
+        .month = try job_alloc.dupe(u8, month),
+        .extension = try job_alloc.dupe(u8, ext_clean),
         .quality = config.quality,
         .t_start = t_received,
     };

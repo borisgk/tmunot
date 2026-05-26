@@ -3,17 +3,21 @@ const db = @import("../db.zig");
 const server = @import("../server.zig");
 
 pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Request, io: std.Io, is_authenticated: bool) !bool {
+    _ = allocator; // kept for API compatibility; we use a local arena below
     const target = req.head.target;
 
     if (std.mem.startsWith(u8, target, "/thumbnails/") or std.mem.startsWith(u8, target, "/previews/")) {
+        // Use a fresh per-request arena so concurrent requests don't share the same allocator
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const alloc = arena.allocator();
         if (!is_authenticated) {
             try req.respond("Unauthorized", .{ .status = .unauthorized });
             return true;
         }
 
         // Decode URL encoding (e.g. %20 -> space)
-        const decoded_target = try server.decodeUrl(allocator, target);
-        defer allocator.free(decoded_target);
+        const decoded_target = try server.decodeUrl(alloc, target);
 
         var type_segment: []const u8 = undefined;
         var suffix: []const u8 = undefined;
@@ -33,20 +37,15 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
         const uuid = suffix[0..dot_idx];
 
         // Retrieve properties from SQLite
-        const loc = try db.getPhotoLocation(uuid, allocator);
+        const loc = try db.getPhotoLocation(uuid, alloc);
         if (loc == null) {
             try req.respond("Not Found", .{ .status = .not_found });
             return true;
         }
-        defer {
-            allocator.free(loc.?.username);
-            allocator.free(loc.?.year);
-            allocator.free(loc.?.month);
-            allocator.free(loc.?.extension);
-        }
+        // arena owns all allocations; no manual defer-free needed
 
         // Reconstruct local chronological user path: photos/<username>/<type>/<year>/<month>/<uuid>.<extension>
-        const full_path = try std.fmt.allocPrint(allocator, "photos/{s}/{s}/{s}/{s}/{s}.{s}", .{
+        const full_path = try std.fmt.allocPrint(alloc, "photos/{s}/{s}/{s}/{s}/{s}.{s}", .{
             loc.?.username,
             type_segment,
             loc.?.year,
@@ -54,7 +53,6 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
             uuid,
             loc.?.extension,
         });
-        defer allocator.free(full_path);
 
         var file = std.Io.Dir.cwd().openFile(io, full_path, .{}) catch {
             try req.respond("Not Found", .{ .status = .not_found });
@@ -67,11 +65,11 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
             return true;
         };
 
-        const file_contents = allocator.alloc(u8, @intCast(stat.size)) catch {
+        const file_contents = alloc.alloc(u8, @intCast(stat.size)) catch {
             try req.respond("Internal Error", .{ .status = .internal_server_error });
             return true;
         };
-        defer allocator.free(file_contents);
+        // arena will free file_contents on scope exit (after req.respond returns)
 
         var reader = file.reader(io, &.{});
         reader.interface.readSliceAll(file_contents) catch |err| {
@@ -118,9 +116,15 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
     return false;
 }
 
-pub fn generateGalleryHtml(allocator: std.mem.Allocator, username: []const u8) ![]u8 {
+pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8) ![]u8 {
+    // Use a fresh per-request arena for all intermediate allocations so concurrent
+    // page loads don't race on the shared auth_ctx.allocator.
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
     var html = std.ArrayList(u8).empty;
-    errdefer html.deinit(allocator);
+    // html is backed by the arena; no errdefer needed — arena.deinit() cleans it up.
 
     const template = @embedFile("../index_gen.html");
     const placeholder = "<!-- GALLERY_CONTENT -->";
@@ -132,7 +136,7 @@ pub fn generateGalleryHtml(allocator: std.mem.Allocator, username: []const u8) !
     const header = template[0..split_index];
     const footer = template[split_index + placeholder.len ..];
 
-    try html.appendSlice(allocator, header);
+    try html.appendSlice(alloc, header);
 
     const logout_html = 
         \\<div style="position: absolute; top: 2.5rem; right: 2.5rem; z-index: 10;">
@@ -141,38 +145,27 @@ pub fn generateGalleryHtml(allocator: std.mem.Allocator, username: []const u8) !
         \\  </form>
         \\</div>
     ;
-    try html.appendSlice(allocator, logout_html);
+    try html.appendSlice(alloc, logout_html);
 
-    // Retrieve user photos from SQLite chronologically
-    const photos = try db.getUserPhotos(username, allocator);
-    defer {
-        for (photos) |r| {
-            allocator.free(r.uuid);
-            allocator.free(r.username);
-            allocator.free(r.filename);
-            allocator.free(r.extension);
-            allocator.free(r.year);
-            allocator.free(r.month);
-            allocator.free(r.day);
-            if (r.shooting_date) |sd| allocator.free(sd);
-            allocator.free(r.upload_date);
-        }
-        allocator.free(photos);
-    }
+    // Retrieve user photos from SQLite chronologically.
+    // getUserPhotos allocates into alloc (the arena); the arena frees all of it on exit.
+    const photos = try db.getUserPhotos(username, alloc);
 
     for (photos) |r| {
         // Output gallery card displaying the original human-readable filename, but routes securely via UUID endpoints
-        const card = try std.fmt.allocPrint(allocator,
+        const card = try std.fmt.allocPrint(alloc,
             \\        <div class="card" onclick="openLightbox('/previews/{s}.{s}')">
             \\            <img src="/thumbnails/{s}.{s}" alt="{s}" loading="lazy">
             \\            <p>{s}</p>
             \\        </div>
         , .{ r.uuid, r.extension, r.uuid, r.extension, r.filename, r.filename });
-        defer allocator.free(card);
-        try html.appendSlice(allocator, card);
+        try html.appendSlice(alloc, card);
     }
 
-    try html.appendSlice(allocator, footer);
+    try html.appendSlice(alloc, footer);
 
-    return html.toOwnedSlice(allocator);
+    // Copy the finished HTML into page_allocator memory — caller (server.zig) frees
+    // it with `defer std.heap.page_allocator.free(html)`.
+    const result = try std.heap.page_allocator.dupe(u8, html.items);
+    return result;
 }

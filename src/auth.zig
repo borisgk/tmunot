@@ -156,76 +156,76 @@ pub const AuthContext = struct {
 
     pub fn verifyCredentials(self: *AuthContext, username: []const u8, password: []const u8) bool {
         const user = self.users.get(username) orelse return false;
-        argon2.strVerify(user.password_hash, password, .{ .allocator = self.allocator }, self.io) catch {
+        // argon2.strVerify needs scratch memory; give it a local arena so it
+        // doesn't race on the shared GPA under concurrent login requests.
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        argon2.strVerify(user.password_hash, password, .{ .allocator = arena.allocator() }, self.io) catch {
             return false;
         };
         return true;
     }
 
     pub fn generateJwt(self: *AuthContext, username: []const u8) ![]u8 {
+        // Use a local arena for all scratch buffers; only the final token is
+        // returned and must be freed by the caller (using the caller's allocator).
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const a = arena.allocator();
+
         const header = "{\"alg\":\"HS256\",\"typ\":\"JWT\"}";
         const exp = time(null) + 3600 * 24; // 24 hours
-        
-        // Ensure standard JSON string encoding for username if it contains quotes
-        // For simplicity assuming username is alphanumeric.
-        const payload = try std.fmt.allocPrint(self.allocator, "{{\"sub\":\"{s}\",\"exp\":{d}}}", .{ username, exp });
-        defer self.allocator.free(payload);
 
-        const header_b64 = try self.allocator.alloc(u8, base64.Encoder.calcSize(header.len));
-        defer self.allocator.free(header_b64);
+        const payload = try std.fmt.allocPrint(a, "{{\"sub\":\"{s}\",\"exp\":{d}}}", .{ username, exp });
+
+        const header_b64 = try a.alloc(u8, base64.Encoder.calcSize(header.len));
         _ = base64.Encoder.encode(header_b64, header);
 
-        const payload_b64 = try self.allocator.alloc(u8, base64.Encoder.calcSize(payload.len));
-        defer self.allocator.free(payload_b64);
+        const payload_b64 = try a.alloc(u8, base64.Encoder.calcSize(payload.len));
         _ = base64.Encoder.encode(payload_b64, payload);
 
-        const msg = try std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ header_b64, payload_b64 });
-        defer self.allocator.free(msg);
+        const msg = try std.fmt.allocPrint(a, "{s}.{s}", .{ header_b64, payload_b64 });
 
         var mac: [hmac.mac_length]u8 = undefined;
         hmac.create(&mac, msg, self.jwt_secret);
 
-        const sig_b64 = try self.allocator.alloc(u8, base64.Encoder.calcSize(mac.len));
-        defer self.allocator.free(sig_b64);
+        const sig_b64 = try a.alloc(u8, base64.Encoder.calcSize(mac.len));
         _ = base64.Encoder.encode(sig_b64, &mac);
 
-        return std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ msg, sig_b64 });
+        // Duplicate the final token into the shared allocator so the caller can
+        // manage its lifetime independently of the local arena.
+        return self.allocator.dupe(u8, try std.fmt.allocPrint(a, "{s}.{s}", .{ msg, sig_b64 }));
     }
 
     pub fn verifyJwt(self: *AuthContext, token: []const u8) bool {
+        // Local arena for all scratch allocations — never touches the shared GPA.
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const a = arena.allocator();
+
         var parts = std.mem.splitScalar(u8, token, '.');
         const header_b64 = parts.next() orelse return false;
         const payload_b64 = parts.next() orelse return false;
         const sig_b64 = parts.next() orelse return false;
         if (parts.next() != null) return false;
 
-        const msg = std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ header_b64, payload_b64 }) catch return false;
-        defer self.allocator.free(msg);
+        const msg = std.fmt.allocPrint(a, "{s}.{s}", .{ header_b64, payload_b64 }) catch return false;
 
         var mac: [hmac.mac_length]u8 = undefined;
         hmac.create(&mac, msg, self.jwt_secret);
 
-        const expected_sig_b64 = self.allocator.alloc(u8, base64.Encoder.calcSize(mac.len)) catch return false;
-        defer self.allocator.free(expected_sig_b64);
+        const expected_sig_b64 = a.alloc(u8, base64.Encoder.calcSize(mac.len)) catch return false;
         _ = base64.Encoder.encode(expected_sig_b64, &mac);
 
-        // Constant time compare is better, but this is okay for a simple JWT.
         if (!std.mem.eql(u8, sig_b64, expected_sig_b64)) return false;
 
-        // Need to check expiration
-        const payload = self.allocator.alloc(u8, base64.Decoder.calcSizeForSlice(payload_b64) catch return false) catch return false;
-        defer self.allocator.free(payload);
-        
-        // base64.Decoder doesn't output the length directly in Zig 0.17 without error.
-        // Let's decode properly.
+        const payload = a.alloc(u8, base64.Decoder.calcSizeForSlice(payload_b64) catch return false) catch return false;
         base64.Decoder.decode(payload, payload_b64) catch return false;
-        // Trim null bytes or padding that might be incorrectly decoded if any
-        
-        // Let's just find the exp field manually
+
         const exp_idx = std.mem.indexOf(u8, payload, "\"exp\":") orelse return false;
         var end_idx = exp_idx + 6;
         while (end_idx < payload.len and std.ascii.isDigit(payload[end_idx])) : (end_idx += 1) {}
-        
+
         const exp_str = payload[exp_idx + 6 .. end_idx];
         const exp = std.fmt.parseInt(i64, exp_str, 10) catch return false;
 
@@ -234,24 +234,28 @@ pub const AuthContext = struct {
         return true;
     }
 
-    pub fn generateCsrfToken(self: *AuthContext) ![]u8 {
+    pub fn generateCsrfToken(self: *AuthContext, allocator: std.mem.Allocator) ![]u8 {
         var token_bytes: [32]u8 = undefined;
         try self.io.randomSecure(&token_bytes);
-        const token_b64 = try self.allocator.alloc(u8, base64.Encoder.calcSize(token_bytes.len));
+        const token_b64 = try allocator.alloc(u8, base64.Encoder.calcSize(token_bytes.len));
         _ = base64.Encoder.encode(token_b64, &token_bytes);
         return token_b64;
     }
 
-    pub fn getUsernameFromJwt(self: *AuthContext, token: []const u8) ?[]const u8 {
+    pub fn getUsernameFromJwt(self: *AuthContext, token: []const u8, allocator: std.mem.Allocator) ?[]const u8 {
         if (!self.verifyJwt(token)) return null;
+
+        // Local arena for decoding scratch — result is duped into caller's allocator.
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const a = arena.allocator();
 
         var parts = std.mem.splitScalar(u8, token, '.');
         _ = parts.next() orelse return null;
         const payload_b64 = parts.next() orelse return null;
 
         const payload_size = base64.Decoder.calcSizeForSlice(payload_b64) catch return null;
-        const payload = self.allocator.alloc(u8, payload_size) catch return null;
-        defer self.allocator.free(payload);
+        const payload = a.alloc(u8, payload_size) catch return null;
 
         base64.Decoder.decode(payload, payload_b64) catch return null;
 
@@ -260,6 +264,6 @@ pub const AuthContext = struct {
         const start = sub_idx + 7;
         const end = std.mem.indexOfPos(u8, payload, start, "\"") orelse return null;
 
-        return self.allocator.dupe(u8, payload[start..end]) catch null;
+        return allocator.dupe(u8, payload[start..end]) catch null;
     }
 };

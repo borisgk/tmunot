@@ -89,9 +89,15 @@ fn handleConnection(stream: std.Io.net.Stream, io: std.Io, auth_ctx: *auth.AuthC
 }
 
 fn handleRequest(req: *std.http.Server.Request, io: std.Io, auth_ctx: *auth.AuthContext, config: config_mod.Config) !void {
+    // Per-request arena: all ephemeral allocations live here and are freed together
+    // at the end of the request, regardless of which code path is taken.
+    var req_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer req_arena.deinit();
+    const req_alloc = req_arena.allocator();
+
     var is_authenticated = false;
     var username: ?[]const u8 = null;
-    defer if (username) |u| auth_ctx.allocator.free(u);
+    // username is duped into req_arena via getUsernameFromJwt; arena frees it.
 
     var cookie_csrf: []const u8 = "";
     var boundary_buf: [128]u8 = undefined;
@@ -106,7 +112,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, auth_ctx: *auth.Auth
                     const token = trimmed[6..];
                     if (auth_ctx.verifyJwt(token)) {
                         is_authenticated = true;
-                        username = auth_ctx.getUsernameFromJwt(token);
+                        username = auth_ctx.getUsernameFromJwt(token, req_alloc);
                     }
                 } else if (std.mem.startsWith(u8, trimmed, "csrf_token=")) {
                     cookie_csrf = trimmed[11..];
@@ -130,12 +136,12 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, auth_ctx: *auth.Auth
     std.debug.print("Request: {s} {s}\n", .{ @tagName(req.head.method), target });
 
     // Route static assets, previews, thumbnails, and fonts first
-    const handled_static = try server_gallery.serveStaticFile(auth_ctx.allocator, req, io, is_authenticated);
+    const handled_static = try server_gallery.serveStaticFile(req_alloc, req, io, is_authenticated);
     if (handled_static) return;
 
     if (req.head.method == .GET and std.mem.eql(u8, target, "/")) {
         if (is_authenticated) {
-            const html = try server_gallery.generateGalleryHtml(auth_ctx.allocator, username orelse "admin");
+            const html = try server_gallery.generateGalleryHtml(req_alloc, username orelse "admin");
             defer std.heap.page_allocator.free(html);
             try req.respond(html, .{
                 .extra_headers = &.{
@@ -145,22 +151,18 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, auth_ctx: *auth.Auth
             return;
         }
 
-        const csrf = try auth_ctx.generateCsrfToken();
-        defer auth_ctx.allocator.free(csrf);
-        
+        const csrf = try auth_ctx.generateCsrfToken(req_alloc);
+
         const login_html = @embedFile("login_gen.html");
         const size = std.mem.replacementSize(u8, login_html, "<!-- CSRF_TOKEN -->", csrf);
-        const final_html = try auth_ctx.allocator.alloc(u8, size);
-        defer auth_ctx.allocator.free(final_html);
+        const final_html = try req_alloc.alloc(u8, size);
         _ = std.mem.replace(u8, login_html, "<!-- CSRF_TOKEN -->", csrf, final_html);
 
         const size2 = std.mem.replacementSize(u8, final_html, "<!-- ERROR_MESSAGE -->", "");
-        const final_html_clean = try auth_ctx.allocator.alloc(u8, size2);
-        defer auth_ctx.allocator.free(final_html_clean);
+        const final_html_clean = try req_alloc.alloc(u8, size2);
         _ = std.mem.replace(u8, final_html, "<!-- ERROR_MESSAGE -->", "", final_html_clean);
 
-        const cookie_header = try std.fmt.allocPrint(auth_ctx.allocator, "csrf_token={s}; HttpOnly; SameSite=Lax; Path=/", .{csrf});
-        defer auth_ctx.allocator.free(cookie_header);
+        const cookie_header = try std.fmt.allocPrint(req_alloc, "csrf_token={s}; HttpOnly; SameSite=Lax; Path=/", .{csrf});
 
         try req.respond(final_html_clean, .{
             .extra_headers = &.{
@@ -191,12 +193,12 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, auth_ctx: *auth.Auth
     }
 
     if (req.head.method == .POST and std.mem.eql(u8, target, "/upload")) {
-        try server_upload.handleUpload(req, io, auth_ctx, config, is_authenticated, username, multipart_boundary);
+        try server_upload.handleUpload(req, io, req_alloc, config, is_authenticated, username, multipart_boundary);
         return;
     }
 
     if (req.head.method == .POST and std.mem.eql(u8, target, "/login")) {
-        try server_auth.handleLogin(req, auth_ctx, cookie_csrf);
+        try server_auth.handleLogin(req, auth_ctx, req_alloc, cookie_csrf);
         return;
     }
 
