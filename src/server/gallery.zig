@@ -127,25 +127,32 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8) ![]u8 {
     // html is backed by the arena; no errdefer needed — arena.deinit() cleans it up.
 
     const template = @embedFile("../index_gen.html");
-    const placeholder = "<!-- GALLERY_CONTENT -->";
-    const split_index = std.mem.indexOf(u8, template, placeholder) orelse {
+    const logout_placeholder = "<!-- GALLERY_LOGOUT -->";
+    const content_placeholder = "<!-- GALLERY_CONTENT -->";
+
+    const logout_idx = std.mem.indexOf(u8, template, logout_placeholder) orelse {
+        std.debug.print("Could not find GALLERY_LOGOUT in template\n", .{});
+        return error.InvalidTemplate;
+    };
+    const content_idx = std.mem.indexOf(u8, template, content_placeholder) orelse {
         std.debug.print("Could not find GALLERY_CONTENT in template\n", .{});
         return error.InvalidTemplate;
     };
 
-    const header = template[0..split_index];
-    const footer = template[split_index + placeholder.len ..];
+    const part1 = template[0..logout_idx];
+    const part2 = template[logout_idx + logout_placeholder.len .. content_idx];
+    const part3 = template[content_idx + content_placeholder.len ..];
 
-    try html.appendSlice(alloc, header);
+    try html.appendSlice(alloc, part1);
 
     const logout_html = 
-        \\<div style="position: absolute; top: 2.5rem; right: 2.5rem; z-index: 10;">
-        \\  <form method="POST" action="/logout">
-        \\      <button type="submit" style="padding: 0.75rem 1.5rem; background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); border: none; border-radius: var(--md-sys-shape-corner-full); cursor: pointer; font-weight: 700; font-family: inherit; font-size: 1rem; transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">Logout</button>
+        \\  <form method="POST" action="/logout" style="margin: 0;">
+        \\      <button type="submit" class="md-header-logout-btn">Logout</button>
         \\  </form>
-        \\</div>
     ;
     try html.appendSlice(alloc, logout_html);
+
+    try html.appendSlice(alloc, part2);
 
     // Retrieve user photos from SQLite chronologically.
     // getUserPhotos allocates into alloc (the arena); the arena frees all of it on exit.
@@ -174,7 +181,7 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8) ![]u8 {
     // Append the dynamic spacer to prevent the last row from stretching
     try html.appendSlice(alloc, "        <div class=\"gallery-spacer\"></div>\n");
 
-    try html.appendSlice(alloc, footer);
+    try html.appendSlice(alloc, part3);
 
     // Copy the finished HTML into page_allocator memory — caller (server.zig) frees
     // it with `defer std.heap.page_allocator.free(html)`.
