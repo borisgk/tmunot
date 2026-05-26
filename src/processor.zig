@@ -1,51 +1,66 @@
 const std = @import("std");
-const config = @import("config.zig");
 const vips = @import("vips.zig");
-const exif = @import("exif.zig");
 
 pub const FileJob = struct {
     allocator: std.mem.Allocator,
     io: std.Io,
-    input_path: []const u8,
-    filename: []const u8,
-    outputs: []config.OutputConfig,
+    buffer: []const u8,         // Memory buffer of original image
+    uuid: []const u8,           // Photo UUID
+    username: []const u8,       // Username of the owner
+    year: []const u8,           // Chronological year
+    month: []const u8,          // Chronological month
+    extension: []const u8,      // Lowercase file extension
     quality: i32,
 };
 
 pub fn worker(job: *FileJob) void {
     const t_start = vips.getThreadCpuMillis();
     defer {
-        job.allocator.free(job.input_path);
-        job.allocator.free(job.filename);
+        job.allocator.free(job.buffer);
+        job.allocator.free(job.uuid);
+        job.allocator.free(job.username);
+        job.allocator.free(job.year);
+        job.allocator.free(job.month);
+        job.allocator.free(job.extension);
         job.allocator.destroy(job);
     }
 
-    // Extract EXIF data in background thread first
-    const json_path = std.fmt.allocPrint(job.allocator, "{s}.json", .{job.input_path}) catch |err| {
-        std.debug.print("Failed to format EXIF json path: {}\n", .{err});
-        return;
-    };
-    defer job.allocator.free(json_path);
-
-    exif.extractExifAndSave(job.allocator, job.io, job.input_path, json_path) catch |err| {
-        std.debug.print("Failed to extract and save EXIF data: {}\n", .{err});
+    const TargetSize = struct {
+        name: []const u8,
+        width: i32,
+        height: i32,
     };
 
-    const in_c = std.fmt.allocPrintSentinel(job.allocator, "{s}", .{job.input_path}, 0) catch |err| {
-        std.debug.print("Failed to convert input path '{s}' to C string: {}\n", .{ job.input_path, err });
-        return;
+    const targets = [_]TargetSize{
+        .{ .name = "previews", .width = 1200, .height = 1200 },
+        .{ .name = "thumbnails", .width = 600, .height = 600 },
     };
-    defer job.allocator.free(in_c);
 
     var current_img: ?*vips.VipsImage = null;
 
-    for (job.outputs, 0..) |out, idx| {
-        const output_path = std.fs.path.join(job.allocator, &.{ out.directory, job.filename }) catch |err| {
-            std.debug.print("Failed to join output path: {}\n", .{err});
+    for (targets, 0..) |target, idx| {
+        // Construct target directory path: photos/<username>/<target.name>/<year>/<month>
+        const target_dir = std.fmt.allocPrint(job.allocator, "photos/{s}/{s}/{s}/{s}", .{ job.username, target.name, job.year, job.month }) catch |err| {
+            std.debug.print("Failed to format target directory: {}\n", .{err});
+            continue;
+        };
+        defer job.allocator.free(target_dir);
+
+        // Recursively create target folder
+        const cwd = std.Io.Dir.cwd();
+        cwd.createDirPath(job.io, target_dir) catch |err| {
+            std.debug.print("Failed to recursively create target path '{s}': {}\n", .{ target_dir, err });
+            continue;
+        };
+
+        // Construct final file path: photos/<username>/<target.name>/<year>/<month>/<uuid>.<ext>
+        const output_path = std.fmt.allocPrint(job.allocator, "{s}/{s}.{s}", .{ target_dir, job.uuid, job.extension }) catch |err| {
+            std.debug.print("Failed to format output path: {}\n", .{err});
             continue;
         };
         defer job.allocator.free(output_path);
 
+        // Quality and save options formatting: filepath[Q=90]
         const out_c = std.fmt.allocPrintSentinel(job.allocator, "{s}[Q={d}]", .{ output_path, job.quality }, 0) catch |err| {
             std.debug.print("Failed to format output path options: {}\n", .{err});
             continue;
@@ -55,21 +70,23 @@ pub fn worker(job: *FileJob) void {
         var next_img: ?*vips.VipsImage = null;
 
         if (idx == 0) {
-            // First (largest) output: read from file
-            const res = vips.vips_thumbnail(
-                in_c.ptr,
+            // First (largest) output: read from buffer
+            const res = vips.vips_thumbnail_buffer(
+                job.buffer.ptr,
+                job.buffer.len,
                 &next_img,
-                @as(c_int, out.target_width),
+                @as(c_int, target.width),
                 "height",
-                @as(c_int, out.target_height),
-                @as(?*anyopaque, null)
+                @as(c_int, target.height),
+                @as(?*anyopaque, null),
             );
+
             if (res != 0) {
-                std.debug.print("Failed to read and resize image '{s}': {s}\n", .{ job.input_path, vips.vips_error_buffer() });
+                std.debug.print("Failed to read and resize image from buffer: {s}\n", .{vips.vips_error_buffer()});
                 return;
             }
-            
-            // Copy to memory so we can read from it multiple times (for saving and for subsequent cascading)
+
+            // Copy to memory for cascading
             const mem_img = vips.vips_image_copy_memory(next_img);
             if (next_img) |img| vips.g_object_unref(img);
             next_img = mem_img;
@@ -78,24 +95,25 @@ pub fn worker(job: *FileJob) void {
             const res = vips.vips_thumbnail_image(
                 current_img,
                 &next_img,
-                @as(c_int, out.target_width),
+                @as(c_int, target.width),
                 "height",
-                @as(c_int, out.target_height),
-                @as(?*anyopaque, null)
+                @as(c_int, target.height),
+                @as(?*anyopaque, null),
             );
+
             if (res != 0) {
-                std.debug.print("Failed to scale image down for '{s}': {s}\n", .{ out.name, vips.vips_error_buffer() });
+                std.debug.print("Failed to scale image down for '{s}': {s}\n", .{target.name, vips.vips_error_buffer()});
                 if (current_img) |img| vips.g_object_unref(img);
                 return;
             }
         }
 
         const write_res = vips.vips_image_write_to_file(next_img, out_c.ptr, @as(?*anyopaque, null));
-        
+
         if (write_res != 0) {
             std.debug.print("Failed to save image '{s}': {s}\n", .{ output_path, vips.vips_error_buffer() });
         } else {
-            std.debug.print("[{s}] Resized: {s} -> {s}\n", .{ out.name, job.input_path, output_path });
+            std.debug.print("[{s}] Resized: {s}.{s} -> {s}\n", .{ target.name, job.uuid, job.extension, output_path });
         }
 
         if (current_img) |img| {
@@ -107,7 +125,7 @@ pub fn worker(job: *FileJob) void {
     if (current_img) |img| {
         vips.g_object_unref(img);
     }
-    
+
     const elapsed_ms = vips.getThreadCpuMillis() - t_start;
-    std.debug.print("Finished processing '{s}' (all sizes) in {d:.2} CPU ms\n", .{job.filename, elapsed_ms});
+    std.debug.print("Finished background processing '{s}.{s}' in {d:.2} CPU ms\n", .{ job.uuid, job.extension, elapsed_ms });
 }

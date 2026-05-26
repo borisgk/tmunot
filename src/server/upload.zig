@@ -2,6 +2,65 @@ const std = @import("std");
 const auth = @import("../auth.zig");
 const config_mod = @import("../config.zig");
 const processor = @import("../processor.zig");
+const exif = @import("../exif.zig");
+const vips = @import("../vips.zig");
+const db = @import("../db.zig");
+
+fn generateUuid(allocator: std.mem.Allocator, io: std.Io) ![]const u8 {
+    var bytes: [16]u8 = undefined;
+    try io.randomSecure(&bytes);
+
+    // Version 4
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    // Variant 1
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    return try std.fmt.allocPrint(allocator,
+        "{0x:02}{1x:02}{2x:02}{3x:02}-{4x:02}{5x:02}-{6x:02}{7x:02}-{8x:02}{9x:02}-{10x:02}{11x:02}{12x:02}{13x:02}{14x:02}{15x:02}",
+        .{
+            bytes[0], bytes[1], bytes[2], bytes[3],
+            bytes[4], bytes[5],
+            bytes[6], bytes[7],
+            bytes[8], bytes[9],
+            bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+        }
+    );
+}
+
+extern "c" fn time(t: ?*i64) i64;
+
+fn getCurrentDateTime(allocator: std.mem.Allocator) !struct { year: []const u8, month: []const u8, day: []const u8, iso_str: []const u8 } {
+    const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = @intCast(time(null)) };
+    const epoch_day = epoch_seconds.getEpochDay();
+    const year_day = epoch_day.calculateYearDay();
+    const month_day = year_day.calculateMonthDay();
+    const day_seconds = epoch_seconds.getDaySeconds();
+    const hour = day_seconds.getHoursIntoDay();
+    const minute = day_seconds.getMinutesIntoHour();
+    const second = day_seconds.getSecondsIntoMinute();
+
+    const numeric_month = month_day.month.numeric();
+    const numeric_day = month_day.day_index + 1;
+
+    const year_str = try std.fmt.allocPrint(allocator, "{0d:4}", .{year_day.year});
+    const month_str = try std.fmt.allocPrint(allocator, "{0d:2}", .{numeric_month});
+    const day_str = try std.fmt.allocPrint(allocator, "{0d:2}", .{numeric_day});
+    const iso_str = try std.fmt.allocPrint(allocator, "{0d:4}-{1d:02}-{2d:02} {3d:02}:{4d:02}:{5d:02}", .{
+        year_day.year,
+        numeric_month,
+        numeric_day,
+        hour,
+        minute,
+        second,
+    });
+
+    return .{
+        .year = year_str,
+        .month = month_str,
+        .day = day_str,
+        .iso_str = iso_str,
+    };
+}
 
 pub fn handleUpload(
     req: *std.http.Server.Request,
@@ -9,9 +68,10 @@ pub fn handleUpload(
     auth_ctx: *auth.AuthContext,
     config: config_mod.Config,
     is_authenticated: bool,
+    username: ?[]const u8,
     multipart_boundary: []const u8,
 ) !void {
-    if (!is_authenticated) {
+    if (!is_authenticated or username == null) {
         try req.respond("Unauthorized", .{ .status = .unauthorized });
         return;
     }
@@ -20,6 +80,9 @@ pub fn handleUpload(
         try req.respond("Missing multipart boundary", .{ .status = .bad_request });
         return;
     }
+
+    const user = try auth_ctx.allocator.dupe(u8, username.?);
+    defer auth_ctx.allocator.free(user);
 
     // Read the multipart body (allowing up to 50MB)
     var buf: [1024]u8 = undefined;
@@ -51,7 +114,6 @@ pub fn handleUpload(
         return;
     }
 
-    // Sanitize filename to avoid path traversal vulnerabilities
     const clean_filename = std.fs.path.basename(filename);
     if (clean_filename.len == 0 or std.mem.eql(u8, clean_filename, ".") or std.mem.eql(u8, clean_filename, "..")) {
         try req.respond("Invalid filename", .{ .status = .bad_request });
@@ -69,36 +131,108 @@ pub fn handleUpload(
     };
     const file_content = body[file_start .. file_start + delimiter_idx];
 
-    // Save raw image to ./input/
-    const input_path = try std.fs.path.join(auth_ctx.allocator, &.{ config.input_directory, clean_filename });
-    defer auth_ctx.allocator.free(input_path);
+    // 2. Determine target file extension
+    const ext = std.fs.path.extension(clean_filename);
+    var ext_lower = try auth_ctx.allocator.alloc(u8, ext.len);
+    defer auth_ctx.allocator.free(ext_lower);
+    for (ext, 0..) |c, i| {
+        ext_lower[i] = std.ascii.toLower(c);
+    }
+    const ext_clean = if (std.mem.startsWith(u8, ext_lower, ".")) ext_lower[1..] else ext_lower;
+
+    // 3. Extract EXIF data from RAM buffer
+    const metadata = try exif.extractExifFromBuffer(auth_ctx.allocator, file_content);
+    defer if (metadata.shooting_date) |sd| auth_ctx.allocator.free(sd);
+
+    // 4. Resolve calendar metrics (fall back to current time if EXIF is missing)
+    const current_time = try getCurrentDateTime(auth_ctx.allocator);
+    defer auth_ctx.allocator.free(current_time.year);
+    defer auth_ctx.allocator.free(current_time.month);
+    defer auth_ctx.allocator.free(current_time.day);
+    defer auth_ctx.allocator.free(current_time.iso_str);
+
+    var year = current_time.year;
+    var month = current_time.month;
+    var day = current_time.day;
+
+    if (metadata.shooting_date) |sd| {
+        if (sd.len >= 10) {
+            year = sd[0..4];
+            month = sd[5..7];
+            day = sd[8..10];
+        }
+    }
+
+    // 5. Get physical dimensions in RAM (fall back to Vips buffer load if EXIF is missing them)
+    var width = metadata.width;
+    var height = metadata.height;
+
+    if (width == null or height == null) {
+        const img = vips.vips_image_new_from_buffer(file_content.ptr, file_content.len, "", @as(?*anyopaque, null));
+        if (img) |im| {
+            width = vips.vips_image_get_width(im);
+            height = vips.vips_image_get_height(im);
+            vips.g_object_unref(im);
+        }
+    }
+
+    // 6. Generate UUID
+    const uuid = try generateUuid(auth_ctx.allocator, io);
+    defer auth_ctx.allocator.free(uuid);
+
+    // 7. Write original photo to photos/<username>/originals/<year>/<month>/<uuid>.<ext>
+    const orig_dir = try std.fmt.allocPrint(auth_ctx.allocator, "photos/{s}/originals/{s}/{s}", .{ user, year, month });
+    defer auth_ctx.allocator.free(orig_dir);
 
     const cwd = std.Io.Dir.cwd();
-    var file = try cwd.createFile(io, input_path, .{});
+    cwd.createDirPath(io, orig_dir) catch |err| {
+        std.debug.print("Failed to create directory {s}: {}\n", .{ orig_dir, err });
+        try req.respond("Internal Server Error", .{ .status = .internal_server_error });
+        return;
+    };
+
+    const orig_path = try std.fmt.allocPrint(auth_ctx.allocator, "{s}/{s}.{s}", .{ orig_dir, uuid, ext_clean });
+    defer auth_ctx.allocator.free(orig_path);
+
+    var file = try cwd.createFile(io, orig_path, .{});
     defer file.close(io);
     var writer = file.writer(io, &.{});
     try writer.interface.writeAll(file_content);
 
-    std.debug.print("Saved uploaded file to {s}\n", .{input_path});
+    std.debug.print("Saved original file in chronological location: {s}\n", .{orig_path});
 
-    // Trigger cascade processing job (which also extracts EXIF data in the background)
+    // 8. Write metadata record in SQLite
+    const record = db.PhotoRecord{
+        .uuid = uuid,
+        .username = user,
+        .filename = clean_filename,
+        .extension = ext_clean,
+        .year = year,
+        .month = month,
+        .day = day,
+        .shooting_date = metadata.shooting_date,
+        .upload_date = current_time.iso_str,
+        .width = width,
+        .height = height,
+    };
+    try db.insertPhoto(record);
+
+    // 9. Dispatch resizing worker with duplicated buffer copy
+    const buffer_copy = try auth_ctx.allocator.dupe(u8, file_content);
+    errdefer auth_ctx.allocator.free(buffer_copy);
+
     const job = try auth_ctx.allocator.create(processor.FileJob);
     job.* = .{
         .allocator = auth_ctx.allocator,
         .io = io,
-        .input_path = try auth_ctx.allocator.dupe(u8, input_path),
-        .filename = try auth_ctx.allocator.dupe(u8, clean_filename),
-        .outputs = try auth_ctx.allocator.alloc(config_mod.OutputConfig, config.outputs.len),
+        .buffer = buffer_copy,
+        .uuid = try auth_ctx.allocator.dupe(u8, uuid),
+        .username = try auth_ctx.allocator.dupe(u8, user),
+        .year = try auth_ctx.allocator.dupe(u8, year),
+        .month = try auth_ctx.allocator.dupe(u8, month),
+        .extension = try auth_ctx.allocator.dupe(u8, ext_clean),
         .quality = config.quality,
     };
-    for (config.outputs, 0..) |out, idx| {
-        job.outputs[idx] = .{
-            .name = try auth_ctx.allocator.dupe(u8, out.name),
-            .target_width = out.target_width,
-            .target_height = out.target_height,
-            .directory = try auth_ctx.allocator.dupe(u8, out.directory),
-        };
-    }
 
     const thread = try std.Thread.spawn(.{}, processor.worker, .{job});
     thread.detach();

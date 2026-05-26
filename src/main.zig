@@ -4,6 +4,7 @@ const config_mod = @import("config.zig");
 const processor = @import("processor.zig");
 const server = @import("server.zig");
 const auth = @import("auth.zig");
+const db = @import("db.zig");
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
@@ -11,6 +12,10 @@ pub fn main(init: std.process.Init) !void {
     var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
+
+    // Initialize DB
+    try db.init(allocator, io, "photos.db");
+    defer db.deinit();
 
     // 1. Load config
     const config = try config_mod.loadConfig(allocator, io, "config.json");
