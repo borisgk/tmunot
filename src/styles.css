@@ -3,7 +3,7 @@
     font-style: normal;
     font-weight: 100 1000;
     font-display: swap;
-    src: url('/fonts/RobotoFlex-VariableFont.ttf') format('truetype');
+    src: url('/fonts/RobotoFlex-VariableFont.woff2') format('woff2');
 }
 
 
