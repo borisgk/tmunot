@@ -1,4 +1,5 @@
 const std = @import("std");
+const db = @import("db.zig");
 
 pub const ExifTag = c_int;
 pub const ExifFormat = c_int;
@@ -221,3 +222,64 @@ pub fn extractExifFromBuffer(allocator: std.mem.Allocator, buffer: []const u8) !
         .height = height,
     };
 }
+
+pub fn extractFullExifFromBuffer(allocator: std.mem.Allocator, buffer: []const u8, uuid: []const u8) !db.PhotoExifRecord {
+    @setEvalBranchQuota(10000);
+    var record = db.PhotoExifRecord{
+        .uuid = try allocator.dupe(u8, uuid),
+    };
+
+    const data = exif_data_new_from_data(buffer.ptr, @intCast(buffer.len));
+    if (data == null) {
+        return record;
+    }
+    defer exif_data_unref(data);
+
+    var ifd: c_int = 0;
+    while (ifd < 5) : (ifd += 1) {
+        const content = data.?.ifd[@intCast(ifd)];
+        if (content) |c| {
+            if (c.count > 0 and c.entries != null) {
+                var i: usize = 0;
+                while (i < c.count) : (i += 1) {
+                    if (c.entries.?[i]) |entry| {
+                        const tag_name_c = exif_tag_get_name(entry.tag);
+                        if (tag_name_c == null) continue;
+                        const tag_name = std.mem.span(tag_name_c);
+
+                        var value_buf: [2048]u8 = undefined;
+                        _ = exif_entry_get_value(entry, &value_buf, value_buf.len);
+                        const val_len = std.mem.indexOfScalar(u8, &value_buf, 0) orelse value_buf.len;
+                        if (val_len == 0) continue;
+                        const val_str = value_buf[0..val_len];
+
+                        inline for (std.meta.fields(db.PhotoExifRecord)) |field| {
+                            if (!comptime std.mem.eql(u8, field.name, "uuid")) {
+                                if (std.mem.eql(u8, tag_name, field.name)) {
+                                    if (@field(record, field.name) == null) {
+                                        var final_val = try allocator.dupe(u8, val_str);
+                                        
+                                        // SQLite compatible Date/Time conversion (YYYY:MM:DD -> YYYY-MM-DD)
+                                        if (comptime std.mem.eql(u8, field.name, "DateTime") or 
+                                            std.mem.eql(u8, field.name, "DateTimeOriginal") or 
+                                            std.mem.eql(u8, field.name, "DateTimeDigitized") or
+                                            std.mem.eql(u8, field.name, "GPSDateStamp")) 
+                                        {
+                                            if (final_val.len >= 10) {
+                                                if (final_val[4] == ':') final_val[4] = '-';
+                                                if (final_val[7] == ':') final_val[7] = '-';
+                                            }
+                                        }
+                                        @field(record, field.name) = final_val;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return record;
+}
+

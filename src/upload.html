@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,25 +8,27 @@
     <link rel="stylesheet" href="/styles.css">
     <link rel="preload" href="/fonts/RobotoFlex-VariableFont.woff2" as="font" type="font/woff2" crossorigin>
 </head>
+
 <body class="gallery-body">
     <div class="upload-container">
         <h2>Upload Photos</h2>
         <p class="subtitle">Select or drag and drop your images to upload them to the gallery</p>
-        
+
         <div id="dropzone" class="dropzone">
             <svg viewBox="0 0 24 24">
-                <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+                <path
+                    d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z" />
             </svg>
             <p>Drag and drop images here</p>
             <span>or click to browse from files</span>
             <input type="file" id="file-input" multiple accept="image/*" style="display: none;">
         </div>
-        
+
         <h3 id="staged-title" class="staged-title">Staged Files</h3>
         <div id="staged-list" class="staged-list">
             <!-- Dynamic staged queue item list -->
         </div>
-        
+
         <div id="progress-container" class="progress-container">
             <div id="active-upload-card" class="active-upload-card" style="display: none;">
                 <img id="active-upload-preview" src="" alt="Active Upload Preview">
@@ -38,13 +41,13 @@
                 <span id="progress-status">Uploading...</span>
                 <span id="progress-percent">0%</span>
             </div>
-            <div id="progress-track" class="progress-segmented-track">
-                <!-- Segments will be dynamically generated here -->
+            <div class="progress-track">
+                <div id="progress-fill" class="progress-fill"></div>
             </div>
         </div>
-        
+
         <div class="error-message" id="error-message" style="margin-bottom: 1.5rem; text-align: center;"></div>
-        
+
         <div class="upload-actions">
             <a href="/" class="secondary-btn">Cancel</a>
             <button id="upload-btn" class="primary-btn" disabled>Upload</button>
@@ -58,9 +61,9 @@
         const stagedTitle = document.getElementById('staged-title');
         const uploadBtn = document.getElementById('upload-btn');
         const progressContainer = document.getElementById('progress-container');
-        const progressFill = document.getElementById('progress-fill');
-        const progressPercent = document.getElementById('progress-percent');
         const progressStatus = document.getElementById('progress-status');
+        const progressPercent = document.getElementById('progress-percent');
+        const progressFill = document.getElementById('progress-fill');
         const errorMessage = document.getElementById('error-message');
 
         let queuedFiles = [];
@@ -111,7 +114,7 @@
                     showError('Only image files are allowed.');
                     continue;
                 }
-                
+
                 // Avoid duplicates in the visual queue
                 if (queuedFiles.some(f => f.name === file.name && f.size === file.size)) {
                     continue;
@@ -125,7 +128,7 @@
         // Update the visual staged list
         function updateQueueUI() {
             stagedList.innerHTML = '';
-            
+
             if (queuedFiles.length === 0) {
                 stagedTitle.style.display = 'none';
                 uploadBtn.disabled = true;
@@ -200,22 +203,63 @@
 
         let activeXhr = null;
 
-        // Pipelined Queue Uploader: next file starts sending as soon as current file is fully sent,
-        // without waiting for the server response. Server responses are checked in parallel for errors.
+        // Poll for thumbnail readiness: retries GET /thumbnails/{uuid}.{ext} every 100ms
+        // until the server returns 200 (thumbnail written to disk) or 5s timeout elapses.
+        function pollThumbnail(uuid, ext, attempts, callback) {
+            const MAX_ATTEMPTS = 50; // 50 * 100ms = 5s timeout
+            const url = `/thumbnails/${uuid}.${ext}`;
+            const poll = new XMLHttpRequest();
+            poll.open('GET', url, true);
+            poll.onload = () => {
+                if (poll.status === 200) {
+                    callback();
+                } else if (attempts < MAX_ATTEMPTS) {
+                    setTimeout(() => pollThumbnail(uuid, ext, attempts + 1, callback), 100);
+                } else {
+                    // Timeout — proceed anyway so the queue doesn't stall
+                    callback();
+                }
+            };
+            poll.onerror = () => callback(); // on network error, proceed anyway
+            poll.send();
+        }
+
+        // Progress state:
+        //   uploadedCount   — number of files whose request body has been fully sent
+        //   currentFilePct  — upload fraction (0–1) of the file currently in flight
+        //   processedCount  — number of files whose thumbnail is confirmed on disk
+        //
+        // Bar = (uploadedCount + currentFilePct) / N × 100.
+        // Represents 100% honest, strictly monotonic upload progress.
+        let uploadedCount = 0;
+        let currentFilePct = 0;
+        let processedCount = 0;
+
+        function updateUploadBar() {
+            const pct = Math.min(100, Math.round(
+                ((uploadedCount + currentFilePct) / queuedFiles.length) * 100
+            ));
+            progressFill.style.width = pct + '%';
+            progressPercent.textContent = pct + '%';
+            if (pct >= 100) {
+                progressStatus.textContent = 'Saving photos...';
+            }
+        }
+
+        function onFileFullyDone() {
+            processedCount++;
+            if (processedCount === queuedFiles.length) {
+                // All thumbnails confirmed — redirect immediately to gallery
+                window.location.href = '/';
+            }
+        }
+
+        // Pipelined Queue Uploader: starts uploading the next file as soon as the current
+        // file's request body is fully sent (without waiting for the server response).
+        // Each file independently polls for its thumbnail and calls onFileFullyDone() when ready.
         function uploadNextFile(index) {
             if (index >= queuedFiles.length) {
-                // All files sent — update UI
-                progressStatus.textContent = 'All uploads complete!';
-
-                // Color all segment fills with primary success color
-                for (let i = 0; i < queuedFiles.length; i++) {
-                    const fill = document.getElementById(`segment-fill-${i}`);
-                    if (fill) fill.style.backgroundColor = 'var(--md-sys-color-primary)';
-                }
-
-                setTimeout(() => {
-                    window.location.href = '/';
-                }, 1000);
+                // All bodies sent — thumbnail polls are running in parallel; wait for them.
                 return;
             }
 
@@ -244,48 +288,46 @@
             activeXhr = xhr;
             xhr.open('POST', '/upload', true);
 
-            // Progress tracking
+            // Progress tracking — track this file's byte fraction for the upload bar
             xhr.upload.addEventListener('progress', (e) => {
                 if (e.lengthComputable) {
-                    const percent = Math.round((e.loaded / e.total) * 100);
-
-                    // Update active file progress bar segment
-                    const currentFill = document.getElementById(`segment-fill-${index}`);
-                    if (currentFill) currentFill.style.width = percent + '%';
-
-                    // Ensure all previous segments are visually at 100%
-                    for (let i = 0; i < index; i++) {
-                        const completedFill = document.getElementById(`segment-fill-${i}`);
-                        if (completedFill) completedFill.style.width = '100%';
-                    }
-
-                    // Update overall queue percentage
-                    const overallPercent = Math.round(((index * 100) + percent) / queuedFiles.length);
-                    progressPercent.textContent = overallPercent + '%';
-                    progressStatus.textContent = `Uploading queue... ${overallPercent}%`;
+                    currentFilePct = e.loaded / e.total;
+                    updateUploadBar();
                 }
             });
 
-            // Upload body fully sent to server — pipeline: kick off next file immediately
-            // without waiting for the HTTP response from the server.
+            // Body fully sent — pipeline: start next file, advance the upload counter
             xhr.upload.addEventListener('load', () => {
                 URL.revokeObjectURL(previewUrl);
-                // Mark this segment visually complete right away
-                const currentFill = document.getElementById(`segment-fill-${index}`);
-                if (currentFill) currentFill.style.width = '100%';
-                // Start next file without any delay
+                uploadedCount++;
+                currentFilePct = 0;
+                updateUploadBar();
                 uploadNextFile(index + 1);
             });
 
-            // Server response handler — only used for error detection, runs in parallel
+            // Server response: parse UUID and begin polling for thumbnail readiness in parallel.
+            // The progress bar is NOT updated here — polling is silent to the user.
             xhr.addEventListener('load', () => {
                 if (xhr.status < 200 || xhr.status >= 300) {
                     let errMsg = 'Upload failed. Server error.';
                     try {
                         const resp = JSON.parse(xhr.responseText);
                         if (resp.error) errMsg = resp.error;
-                    } catch(e) {}
+                    } catch (e) { }
                     resetUploadUI(errMsg);
+                    return;
+                }
+                let uuid = null, ext = null;
+                try {
+                    const resp = JSON.parse(xhr.responseText);
+                    uuid = resp.uuid;
+                    ext = resp.ext;
+                } catch (e) { }
+
+                if (uuid && ext) {
+                    pollThumbnail(uuid, ext, 0, onFileFullyDone);
+                } else {
+                    onFileFullyDone();
                 }
             });
 
@@ -306,29 +348,27 @@
             progressContainer.style.display = 'block';
             uploadBtn.disabled = true;
             dropzone.style.pointerEvents = 'none';
-            
+
             // Hide the staged list and title during upload to keep focus on progress
             stagedTitle.style.display = 'none';
             stagedList.style.display = 'none';
 
-            // Dynamically generate progress segments based on queue size
-            const track = document.getElementById('progress-track');
-            track.innerHTML = '';
-            for (let i = 0; i < queuedFiles.length; i++) {
-                const segment = document.createElement('div');
-                segment.className = 'progress-segment-track';
-                segment.innerHTML = `<div class="progress-segment-fill" id="segment-fill-${i}"></div>`;
-                track.appendChild(segment);
-            }
+            // Reset all counters for this upload session
+            uploadedCount = 0;
+            currentFilePct = 0;
+            processedCount = 0;
+            progressFill.style.width = '0%';
+            progressPercent.textContent = '0%';
+            progressStatus.textContent = 'Uploading...';
 
-            // Start sequential queue upload
+            // Start pipelined upload
             uploadNextFile(0);
         });
 
         // Reset UI after an error
         function resetUploadUI(errorMsg) {
             showError(errorMsg);
-            
+
             // Hide the active preview card
             const activeCard = document.getElementById('active-upload-card');
             activeCard.style.display = 'none';
@@ -339,6 +379,7 @@
             stagedList.style.display = 'flex';
 
             progressContainer.style.display = 'none';
+            progressFill.style.width = '0%';
             progressPercent.textContent = '0%';
             progressStatus.textContent = 'Uploading...';
             uploadBtn.disabled = false;
@@ -347,4 +388,5 @@
         }
     </script>
 </body>
+
 </html>

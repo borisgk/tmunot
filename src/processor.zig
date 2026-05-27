@@ -2,9 +2,10 @@ const std = @import("std");
 const vips = @import("vips.zig");
 const logger = @import("logger.zig");
 
+pub extern "c" fn usleep(useconds: c_uint) c_int;
+
 pub const FileJob = struct {
     allocator: std.mem.Allocator,
-    buffer: []const u8,         // Memory buffer of original image
     uuid: []const u8,           // Photo UUID
     username: []const u8,       // Username of the owner
     year: []const u8,           // Chronological year
@@ -12,7 +13,64 @@ pub const FileJob = struct {
     extension: []const u8,      // Lowercase file extension
     quality: i32,
     t_start: f64,
+    next: ?*FileJob = null,
 };
+
+var job_queue_mutex: std.atomic.Mutex = .unlocked;
+var job_queue_head: ?*FileJob = null;
+var job_queue_tail: ?*FileJob = null;
+var worker_thread: ?std.Thread = null;
+var worker_should_exit: bool = false;
+
+pub fn pushJob(job: *FileJob) void {
+    while (!job_queue_mutex.tryLock()) {
+        std.atomic.spinLoopHint();
+    }
+    defer job_queue_mutex.unlock();
+
+    job.next = null;
+    if (job_queue_tail) |tail| {
+        tail.next = job;
+        job_queue_tail = job;
+    } else {
+        job_queue_head = job;
+        job_queue_tail = job;
+    }
+}
+
+fn popJob() ?*FileJob {
+    while (!job_queue_mutex.tryLock()) {
+        std.atomic.spinLoopHint();
+    }
+    defer job_queue_mutex.unlock();
+
+    if (job_queue_head) |head| {
+        job_queue_head = head.next;
+        if (job_queue_head == null) {
+            job_queue_tail = null;
+        }
+        return head;
+    }
+    return null;
+}
+
+pub fn startQueueWorker() !void {
+    if (worker_thread != null) return;
+    worker_should_exit = false;
+    worker_thread = try std.Thread.spawn(.{}, queueWorkerLoop, .{});
+}
+
+fn queueWorkerLoop() void {
+    std.debug.print("Background image processing queue worker started.\n", .{});
+    while (!worker_should_exit) {
+        if (popJob()) |job| {
+            processJob(job);
+        } else {
+            // Sleep for 20ms to avoid high CPU consumption
+            _ = usleep(20 * 1000);
+        }
+    }
+}
 
 fn makeDirPathSync(allocator: std.mem.Allocator, target_dir: []const u8) !void {
     var it = std.mem.splitScalar(u8, target_dir, '/');
@@ -33,10 +91,9 @@ fn makeDirPathSync(allocator: std.mem.Allocator, target_dir: []const u8) !void {
     }
 }
 
-pub fn worker(job: *FileJob) void {
+fn processJob(job: *FileJob) void {
     const t_start = vips.getThreadCpuMillis();
     defer {
-        job.allocator.free(job.buffer);
         job.allocator.free(job.uuid);
         job.allocator.free(job.username);
         job.allocator.free(job.year);
@@ -89,10 +146,24 @@ pub fn worker(job: *FileJob) void {
         var next_img: ?*vips.VipsImage = null;
 
         if (idx == 0) {
-            // First (largest) output: read from buffer
-            const res = vips.vips_thumbnail_buffer(
-                job.buffer.ptr,
-                job.buffer.len,
+            // Construct original chronological path: photos/<username>/originals/<year>/<month>/<uuid>.<ext>
+            const orig_path = std.fmt.allocPrint(job.allocator, "photos/{s}/originals/{s}/{s}/{s}.{s}", .{
+                job.username, job.year, job.month, job.uuid, job.extension
+            }) catch |err| {
+                std.debug.print("Failed to format original image path: {}\n", .{err});
+                return;
+            };
+            defer job.allocator.free(orig_path);
+
+            const orig_path_c = std.fmt.allocPrintSentinel(job.allocator, "{s}", .{orig_path}, 0) catch |err| {
+                std.debug.print("Failed to format original image path sentinel: {}\n", .{err});
+                return;
+            };
+            defer job.allocator.free(orig_path_c);
+
+            // First (largest) output: read directly from the original file saved on disk
+            const res = vips.vips_thumbnail(
+                orig_path_c.ptr,
                 &next_img,
                 @as(c_int, target.width),
                 "height",
@@ -100,10 +171,10 @@ pub fn worker(job: *FileJob) void {
                 @as(?*anyopaque, null),
             );
             const t1 = vips.getWallMillis();
-            logger.logEvent(job.uuid, "vips_thumbnail_buffer completed", job.t_start, t1);
+            logger.logEvent(job.uuid, "vips_thumbnail completed from file", job.t_start, t1);
 
             if (res != 0) {
-                std.debug.print("Failed to read and resize image from buffer: {s}\n", .{vips.vips_error_buffer()});
+                std.debug.print("Failed to read and resize image from file: {s}\n", .{vips.vips_error_buffer()});
                 return;
             }
 
@@ -163,3 +234,4 @@ pub fn worker(job: *FileJob) void {
     const elapsed_ms = vips.getThreadCpuMillis() - t_start;
     std.debug.print("Finished background processing '{s}.{s}' in {d:.2} CPU ms\n", .{ job.uuid, job.extension, elapsed_ms });
 }
+
