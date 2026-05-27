@@ -126,14 +126,9 @@
                 const item = document.createElement('div');
                 item.className = 'staged-item';
 
-                // Image preview thumbnail (with size safeguard to prevent CPU/RAM lockup on large files)
+                // Default to generic placeholder icon while staged
                 const img = document.createElement('img');
-                if (file.size > 5 * 1024 * 1024) {
-                    img.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%233858e9"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>`;
-                } else {
-                    img.src = URL.createObjectURL(file);
-                    img.onload = () => URL.revokeObjectURL(img.src); // Free memory
-                }
+                img.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%233858e9"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>`;
 
                 const details = document.createElement('div');
                 details.className = 'staged-item-details';
@@ -165,7 +160,7 @@
                 details.appendChild(progressContainer);
                 
                 // Keep reference to elements in file object for easy access later
-                file.ui = { item, progressContainer, progressFill, removeBtn: null };
+                file.ui = { item, progressContainer, progressFill, img, removeBtn: null };
 
                 // Remove button with SVG trash icon
                 const removeBtn = document.createElement('button');
@@ -241,6 +236,12 @@
 
             const activeFile = queuedFiles[index];
             activeFile.ui.progressContainer.style.display = 'block';
+            
+            // Show the actual image thumbnail while uploading
+            if (activeFile.size <= 50 * 1024 * 1024) {
+                activeFile.ui.img.src = URL.createObjectURL(activeFile);
+                activeFile.ui.img.onload = () => URL.revokeObjectURL(activeFile.ui.img.src);
+            }
 
             const formData = new FormData();
             formData.append('images', activeFile);
@@ -278,9 +279,12 @@
                         fileStatus[index].error = true;
                     } else {
                         fileStatus[index].uuid = uuid;
-                        // Snap to 100% and fade out
+                        // Snap to 100% and completely destroy the item from the DOM to free memory
                         activeFile.ui.progressFill.style.width = '100%';
-                        setTimeout(() => activeFile.ui.item.classList.add('done'), 150);
+                        setTimeout(() => {
+                            activeFile.ui.item.remove();
+                            activeFile.ui = null; // drop references
+                        }, 150);
                     }
                     checkAllDone();
                 }
