@@ -159,6 +159,14 @@ def main():
             
         upload_html = re.sub(r'<link\s+rel="stylesheet"\s+href="/styles\.css"[^>]*>', css_replacement, upload_html)
         
+        upload_css_path = os.path.join(src_dir, 'upload.css')
+        if os.path.exists(upload_css_path):
+            with open(upload_css_path, 'r', encoding='utf-8') as f:
+                upload_css = f.read()
+            min_upload_css = minify_css(upload_css)
+            upload_css_replacement = f'<style>{min_upload_css}</style>'
+            upload_html = re.sub(r'<link\s+rel="stylesheet"\s+href="/upload\.css"[^>]*>', upload_css_replacement, upload_html)
+        
         upload_js_path = os.path.join(src_dir, 'upload.js')
         if os.path.exists(upload_js_path):
             with open(upload_js_path, 'r', encoding='utf-8') as f:

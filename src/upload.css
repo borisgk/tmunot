@@ -1,0 +1,425 @@
+/* --- Upload Layout & Containers --- */
+.upload-container {
+    width: 100%;
+    max-width: 680px;
+    padding: 3rem;
+    background: var(--md-sys-color-surface-container-high);
+    border-radius: var(--md-sys-shape-corner-extra-large);
+    box-shadow: 0 8px 12px -4px rgba(0,0,0,0.2), 0 4px 6px -4px rgba(0,0,0,0.1);
+    margin: 2rem auto;
+    animation: slideUp var(--md-sys-motion-duration-medium) var(--md-sys-motion-easing-standard) forwards;
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+.upload-container h2 {
+    font-size: 2.25rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    color: var(--md-sys-color-primary);
+    text-align: center;
+}
+
+.upload-container p.subtitle {
+    font-size: 1rem;
+    color: var(--md-sys-color-on-surface-variant);
+    margin-bottom: 2.5rem;
+    text-align: center;
+}
+
+/* --- Drag & Drop Dropzone --- */
+.dropzone {
+    border: 2px dashed var(--md-sys-color-outline);
+    border-radius: var(--md-sys-shape-corner-extra-large);
+    padding: 4rem 2rem;
+    text-align: center;
+    background: var(--md-sys-color-surface-container);
+    cursor: pointer;
+    transition: border-color var(--md-sys-motion-duration-medium) var(--md-sys-motion-easing-standard),
+                background-color var(--md-sys-motion-duration-medium) var(--md-sys-motion-easing-standard);
+    margin-bottom: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.dropzone.dragover {
+    border-color: var(--md-sys-color-primary);
+    background: var(--md-sys-color-primary-container);
+}
+
+.dropzone svg {
+    width: 48px;
+    height: 48px;
+    fill: var(--md-sys-color-primary);
+    margin-bottom: 1rem;
+    transition: transform 0.2s var(--md-sys-motion-easing-standard);
+}
+
+.dropzone:hover svg {
+    transform: translateY(-4px);
+}
+
+.dropzone p {
+    font-size: 1.125rem;
+    font-weight: 500;
+    color: var(--md-sys-color-on-surface);
+}
+
+.dropzone span {
+    font-size: 0.875rem;
+    color: var(--md-sys-color-on-surface-variant);
+    margin-top: 0.5rem;
+}
+
+/* --- Staged Queue List --- */
+.staged-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--md-sys-color-on-surface);
+    margin-bottom: 1rem;
+    display: none; /* hidden until files exist */
+}
+
+.staged-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-height: 300px;
+    overflow-y: auto;
+    margin-bottom: 2rem;
+    padding-right: 4px;
+}
+
+/* Staged item card */
+.staged-item {
+    display: flex;
+    align-items: center;
+    background: var(--md-sys-color-surface-container);
+    border-radius: var(--md-sys-shape-corner-large);
+    padding: 0.75rem 1rem;
+    animation: slideUp 0.25s var(--md-sys-motion-easing-standard) forwards;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+    height: 80px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+
+.staged-item-progress-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 0%;
+    background-color: rgba(0, 0, 0, 0.15); /* Gradual dimming effect */
+    z-index: 0;
+    transition: width 0.1s linear;
+    pointer-events: none;
+}
+
+/* Ensure content sits above overlay */
+.staged-item img,
+.staged-item-details,
+.remove-btn {
+    position: relative;
+    z-index: 1;
+}
+
+.staged-item img {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: var(--md-sys-shape-corner-small);
+    margin-right: 1rem;
+    flex-shrink: 0;
+    display: block;
+}
+
+.staged-item-details {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.staged-item-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--md-sys-color-on-surface);
+    word-break: break-all;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.staged-item-size {
+    font-size: 0.825rem;
+    color: var(--md-sys-color-on-surface-variant);
+    margin-top: 0.125rem;
+}
+
+.staged-item-pct {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--md-sys-color-primary);
+    margin-left: 1rem;
+    margin-right: 0.5rem;
+    min-width: 4ch;
+    text-align: right;
+    position: relative;
+    z-index: 1;
+}
+
+/* Trash Icon Remove Button */
+.remove-btn {
+    background: transparent;
+    border: none;
+    color: var(--md-sys-color-error);
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: var(--md-sys-shape-corner-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+
+.remove-btn:hover {
+    background-color: var(--md-sys-color-error-container);
+}
+
+.remove-btn svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+}
+
+/* --- Linear Progress Bar --- */
+.progress-container {
+    display: none;
+    margin-bottom: 2rem;
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--md-sys-color-on-surface);
+    margin-bottom: 0.5rem;
+}
+
+.progress-track {
+    width: 100%;
+    height: 4px;
+    background: var(--md-sys-color-surface-container-high);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    width: 0%;
+    height: 100%;
+    background: var(--md-sys-color-primary);
+    border-radius: 2px;
+    transition: width 0.1s linear;
+}
+
+/* --- Action Controls --- */
+.upload-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.secondary-btn {
+    flex: 1;
+    padding: 1rem;
+    background: transparent;
+    border: 1px solid var(--md-sys-color-outline);
+    color: var(--md-sys-color-primary);
+    border-radius: var(--md-sys-shape-corner-full);
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.secondary-btn:hover {
+    background-color: var(--md-sys-color-surface-container);
+    border-color: var(--md-sys-color-primary);
+}
+
+.primary-btn {
+    flex: 1;
+    padding: 1rem;
+    background: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
+    border: none;
+    border-radius: var(--md-sys-shape-corner-full);
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.2s var(--md-sys-motion-easing-standard), opacity 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+
+.primary-btn::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--md-sys-color-on-primary);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.primary-btn:hover {
+    transform: scale(1.02);
+}
+
+.primary-btn:hover::before {
+    opacity: 0.08;
+}
+
+.primary-btn:active::before {
+    opacity: 0.12;
+}
+
+.primary-btn:disabled {
+    background: var(--md-sys-color-outline-variant);
+    color: var(--md-sys-color-outline);
+    cursor: not-allowed;
+    transform: none;
+}
+.primary-btn:disabled::before {
+    display: none;
+}
+
+/* --- Active Upload Preview Card --- */
+.active-upload-card {
+    display: flex;
+    align-items: center;
+    background: var(--md-sys-color-surface-container);
+    border-radius: var(--md-sys-shape-corner-extra-large);
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    animation: slideUp var(--md-sys-motion-duration-medium) var(--md-sys-motion-easing-standard);
+}
+
+.active-upload-card img {
+    width: 150px;
+    height: 150px;
+    object-fit: cover;
+    border-radius: var(--md-sys-shape-corner-large);
+    margin-right: 1.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.active-upload-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.active-upload-name {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--md-sys-color-on-surface);
+    word-break: break-all;
+    margin-bottom: 0.5rem;
+}
+
+.active-upload-queue-status {
+    font-size: 0.9rem;
+    color: var(--md-sys-color-primary);
+    font-weight: 500;
+}
+
+/* --- Segmented Progress Bar --- */
+.progress-segmented-track {
+    display: flex;
+    gap: 4px;
+    width: 100%;
+    height: 6px;
+    background: transparent;
+    overflow: visible;
+}
+
+.progress-segment-track {
+    flex: 1;
+    height: 100%;
+    background: var(--md-sys-color-surface-container-high);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.progress-segment-fill {
+    width: 0%;
+    height: 100%;
+    background: var(--md-sys-color-primary);
+    border-radius: 3px;
+    transition: width 0.15s linear, background-color 0.3s ease;
+}
+
+/* Processing bar uses a distinct teal accent color */
+.progress-segment-track--process {
+    background: color-mix(in srgb, var(--md-sys-color-primary) 12%, var(--md-sys-color-surface-container-high));
+}
+
+.progress-segment-fill--process {
+    background: color-mix(in srgb, var(--md-sys-color-primary) 45%, #00897b);
+}
+
+/* --- Dual Progress Bar Layout --- */
+.progress-row {
+    margin-bottom: 1rem;
+}
+
+.progress-row-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.4rem;
+}
+
+.progress-row-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--md-sys-color-on-surface-variant);
+}
+
+.progress-row-percent {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--md-sys-color-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.progress-overall-status {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--md-sys-color-on-surface-variant);
+    text-align: center;
+    margin-top: 0.25rem;
+}
+
+/* --- Individual Item Progress --- */
+/* Replaced by overlay on staged-item */
+.staged-item.processing {
+    opacity: 0.7;
+}
+.staged-item.done {
+    display: none;
+}
