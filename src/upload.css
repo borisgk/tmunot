@@ -105,6 +105,7 @@
     overflow: hidden;
     margin-bottom: 0.5rem;
     height: 80px;
+    min-height: 80px;
     box-sizing: border-box;
     flex-shrink: 0;
 }
