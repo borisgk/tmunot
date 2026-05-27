@@ -190,6 +190,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
         try req.respond(@embedFile("upload_gen.html"), .{
             .extra_headers = &.{
                 .{ .name = "content-type", .value = "text/html" },
+                .{ .name = "cache-control", .value = "no-cache, no-store, must-revalidate" },
             },
         });
         return;
