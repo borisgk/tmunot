@@ -572,6 +572,32 @@ body {
     padding: 0.75rem 1rem;
     animation: slideUp 0.25s var(--md-sys-motion-easing-standard) forwards;
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+    height: 80px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+
+.staged-item-progress-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 0%;
+    background-color: rgba(0, 0, 0, 0.15); /* Gradual dimming effect */
+    z-index: 0;
+    transition: width 0.1s linear;
+    pointer-events: none;
+}
+
+/* Ensure content sits above overlay */
+.staged-item img,
+.staged-item-details,
+.remove-btn {
+    position: relative;
+    z-index: 1;
 }
 
 .staged-item img {
@@ -580,11 +606,16 @@ body {
     object-fit: cover;
     border-radius: var(--md-sys-shape-corner-small);
     margin-right: 1rem;
+    flex-shrink: 0;
+    display: block;
 }
 
 .staged-item-details {
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
 }
 
 .staged-item-name {
@@ -601,6 +632,18 @@ body {
     font-size: 0.825rem;
     color: var(--md-sys-color-on-surface-variant);
     margin-top: 0.125rem;
+}
+
+.staged-item-pct {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--md-sys-color-primary);
+    margin-left: 1rem;
+    margin-right: 0.5rem;
+    min-width: 4ch;
+    text-align: right;
+    position: relative;
+    z-index: 1;
 }
 
 /* Trash Icon Remove Button */
@@ -844,22 +887,7 @@ body {
 }
 
 /* --- Individual Item Progress --- */
-.item-progress-container {
-    margin-top: 0.5rem;
-    width: 100%;
-}
-.item-progress-track {
-    background-color: var(--md-sys-color-surface-container-high);
-    height: 4px;
-    border-radius: 2px;
-    overflow: hidden;
-}
-.item-progress-fill {
-    background-color: var(--md-sys-color-primary);
-    height: 100%;
-    width: 0%;
-    transition: width 0.1s linear, background-color 0.3s;
-}
+/* Replaced by overlay on staged-item */
 .staged-item.processing {
     opacity: 0.7;
 }
