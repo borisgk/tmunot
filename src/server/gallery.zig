@@ -1,6 +1,7 @@
 const std = @import("std");
 const db = @import("../db.zig");
 const server = @import("../server.zig");
+const processor = @import("../processor.zig");
 
 pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Request, io: std.Io, is_authenticated: bool) !bool {
     _ = allocator; // kept for API compatibility; we use a local arena below
@@ -35,6 +36,12 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
             return true;
         };
         const uuid = suffix[0..dot_idx];
+
+        // Shield SQLite from polling: if the job is active in registry, return 404 immediately
+        if (try processor.getActiveJob(uuid, alloc)) |_| {
+            try req.respond("Not Found", .{ .status = .not_found });
+            return true;
+        }
 
         // Retrieve properties from SQLite
         const loc = try db.getPhotoLocation(uuid, alloc);

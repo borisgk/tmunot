@@ -140,62 +140,24 @@ pub fn handleUpload(
     }
     const ext_clean = if (std.mem.startsWith(u8, ext_lower, ".")) ext_lower[1..] else ext_lower;
 
-    // 3. Extract EXIF data from RAM buffer
-    const metadata = try exif.extractExifFromBuffer(req_alloc, file_content);
-    defer if (metadata.shooting_date) |sd| req_alloc.free(sd);
-    const t_exif = vips.getWallMillis();
-
-    // 4. Resolve calendar metrics (fall back to current time if EXIF is missing)
+        // 3. Resolve calendar metrics (use current time for original photo directory path)
     const current_time = try getCurrentDateTime(req_alloc);
     defer req_alloc.free(current_time.year);
     defer req_alloc.free(current_time.month);
     defer req_alloc.free(current_time.day);
     defer req_alloc.free(current_time.iso_str);
 
-    var year = current_time.year;
-    var month = current_time.month;
-    var day = current_time.day;
+    const year = current_time.year;
+    const month = current_time.month;
+    const day = current_time.day;
 
-    if (metadata.shooting_date) |sd| {
-        if (sd.len >= 10) {
-            year = sd[0..4];
-            month = sd[5..7];
-            day = sd[8..10];
-        }
-    }
-
-    // 5. Get physical dimensions in RAM (fall back to Vips buffer load if EXIF is missing them)
-    var width = metadata.width;
-    var height = metadata.height;
-
-    if (width == null or height == null) {
-        const img = vips.vips_image_new_from_buffer(file_content.ptr, file_content.len, "", @as(?*anyopaque, null));
-        if (img) |im| {
-            width = vips.vips_image_get_width(im);
-            height = vips.vips_image_get_height(im);
-            vips.g_object_unref(im);
-        }
-    }
-
-    // 6. Generate UUID
+    // 4. Generate UUID
     const uuid = try generateUuid(req_alloc, io);
     defer req_alloc.free(uuid);
 
-    const full_exif_record = try exif.extractFullExifFromBuffer(req_alloc, file_content, uuid);
-    defer {
-        @setEvalBranchQuota(10000);
-        inline for (std.meta.fields(db.PhotoExifRecord)) |field| {
-            if (comptime !std.mem.eql(u8, field.name, "uuid")) {
-                if (@field(full_exif_record, field.name)) |v| req_alloc.free(v);
-            }
-        }
-        req_alloc.free(full_exif_record.uuid);
-    }
-
     logger.logEvent(uuid, "file received", t_received, t_received);
-    logger.logEvent(uuid, "exif read", t_received, t_exif);
 
-    // 7. Write original photo to photos/<username>/originals/<year>/<month>/<uuid>.<ext>
+    // 5. Write original photo to photos/<username>/originals/<year>/<month>/<uuid>.<ext>
     const orig_dir = try std.fmt.allocPrint(req_alloc, "photos/{s}/originals/{s}/{s}", .{ user, year, month });
     defer req_alloc.free(orig_dir);
 
@@ -214,29 +176,12 @@ pub fn handleUpload(
     var writer = file.writer(io, &.{});
     try writer.interface.writeAll(file_content);
 
-    std.debug.print("Saved original file in chronological location: {s}\n", .{orig_path});
+    std.debug.print("Saved original file: {s}\n", .{orig_path});
 
-    // 8. Write metadata record in SQLite
-    const record = db.PhotoRecord{
-        .uuid = uuid,
-        .username = user,
-        .filename = clean_filename,
-        .extension = ext_clean,
-        .year = year,
-        .month = month,
-        .day = day,
-        .shooting_date = metadata.shooting_date,
-        .upload_date = current_time.iso_str,
-        .width = width,
-        .height = height,
-    };
-    try db.insertPhoto(record);
-    try db.insertPhotoExif(full_exif_record);
-    const t_db = vips.getWallMillis();
-    logger.logEvent(uuid, "database updated", t_received, t_db);
+    // 6. Register job in ActiveJobsRegistry as pending
+    try processor.registerJob(uuid, user, year, month, ext_clean);
 
-    // 9. Allocate a FileJob on page_allocator for the background worker queue.
-    // The worker reads the photo from disk (saved at orig_path), eliminating RAM buffer copies.
+    // 7. Allocate a FileJob on page_allocator for the background worker queue.
     const job_alloc = std.heap.page_allocator;
 
     const job = try job_alloc.create(processor.FileJob);
@@ -244,8 +189,11 @@ pub fn handleUpload(
         .allocator = job_alloc,
         .uuid = try job_alloc.dupe(u8, uuid),
         .username = try job_alloc.dupe(u8, user),
+        .filename = try job_alloc.dupe(u8, clean_filename),
         .year = try job_alloc.dupe(u8, year),
         .month = try job_alloc.dupe(u8, month),
+        .day = try job_alloc.dupe(u8, day),
+        .upload_date = try job_alloc.dupe(u8, current_time.iso_str),
         .extension = try job_alloc.dupe(u8, ext_clean),
         .quality = config.quality,
         .t_start = t_received,
