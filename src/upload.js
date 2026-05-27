@@ -102,23 +102,15 @@
                 details.appendChild(name);
                 details.appendChild(size);
 
-                const progressContainer = document.createElement('div');
-                progressContainer.className = 'item-progress-container';
-                progressContainer.style.display = 'none';
+                const progressOverlay = document.createElement('div');
+                progressOverlay.className = 'staged-item-progress-overlay';
                 
-                const progressTrack = document.createElement('div');
-                progressTrack.className = 'item-progress-track';
-                
-                const progressFill = document.createElement('div');
-                progressFill.className = 'item-progress-fill';
-                
-                progressTrack.appendChild(progressFill);
-                progressContainer.appendChild(progressTrack);
-                
-                details.appendChild(progressContainer);
+                const pctLabel = document.createElement('div');
+                pctLabel.className = 'staged-item-pct';
+                pctLabel.textContent = '0%'; // show 0% initially
                 
                 // Keep reference to elements in file object for easy access later
-                file.ui = { item, progressContainer, progressFill, img, removeBtn: null };
+                file.ui = { item, progressOverlay, pctLabel, img, removeBtn: null };
 
                 // Remove button with SVG trash icon
                 const removeBtn = document.createElement('button');
@@ -132,8 +124,10 @@
                 removeBtn.addEventListener('click', () => removeFile(index));
                 file.ui.removeBtn = removeBtn;
 
+                item.appendChild(progressOverlay);
                 item.appendChild(img);
                 item.appendChild(details);
+                item.appendChild(pctLabel);
                 item.appendChild(removeBtn);
                 stagedList.appendChild(item);
             });
@@ -193,7 +187,6 @@
             activeUploads++;
 
             const activeFile = queuedFiles[index];
-            activeFile.ui.progressContainer.style.display = 'block';
             
             // Show the actual image thumbnail while uploading
             if (activeFile.size <= 50 * 1024 * 1024) {
@@ -210,12 +203,14 @@
             xhr.upload.addEventListener('progress', (e) => {
                 if (e.lengthComputable && e.total > 0) {
                     const pct = Math.min(100, Math.round((e.loaded / e.total) * 100));
-                    activeFile.ui.progressFill.style.width = pct + '%';
+                    activeFile.ui.progressOverlay.style.width = pct + '%';
+                    activeFile.ui.pctLabel.textContent = pct + '%';
                 }
             });
 
             xhr.upload.addEventListener('load', () => {
-                activeFile.ui.progressFill.style.width = '100%';
+                activeFile.ui.progressOverlay.style.width = '100%';
+                activeFile.ui.pctLabel.textContent = '100%';
                 activeFile.ui.item.classList.add('processing');
             });
 
@@ -238,7 +233,8 @@
                     } else {
                         fileStatus[index].uuid = uuid;
                         // Snap to 100% and completely destroy the item from the DOM to free memory
-                        activeFile.ui.progressFill.style.width = '100%';
+                        activeFile.ui.progressOverlay.style.width = '100%';
+                        activeFile.ui.pctLabel.textContent = '100%';
                         setTimeout(() => {
                             activeFile.ui.item.remove();
                             activeFile.ui = null; // drop references
