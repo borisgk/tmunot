@@ -29,22 +29,7 @@
             <!-- Dynamic staged queue item list -->
         </div>
 
-        <div id="progress-container" class="progress-container">
-            <div id="active-upload-card" class="active-upload-card" style="display: none;">
-                <img id="active-upload-preview" src="" alt="Active Upload Preview">
-                <div class="active-upload-details">
-                    <div id="active-upload-name" class="active-upload-name">filename.jpg</div>
-                    <div id="active-upload-queue-status" class="active-upload-queue-status">File 1 of 5</div>
-                </div>
-            </div>
-            <div class="progress-header">
-                <span id="progress-status">Uploading...</span>
-                <span id="progress-percent">0%</span>
-            </div>
-            <div class="progress-track">
-                <div id="progress-fill" class="progress-fill"></div>
-            </div>
-        </div>
+
 
         <div class="error-message" id="error-message" style="margin-bottom: 1.5rem; text-align: center;"></div>
 
@@ -60,10 +45,6 @@
         const stagedList = document.getElementById('staged-list');
         const stagedTitle = document.getElementById('staged-title');
         const uploadBtn = document.getElementById('upload-btn');
-        const progressContainer = document.getElementById('progress-container');
-        const progressStatus = document.getElementById('progress-status');
-        const progressPercent = document.getElementById('progress-percent');
-        const progressFill = document.getElementById('progress-fill');
         const errorMessage = document.getElementById('error-message');
 
         let queuedFiles = [];
@@ -168,6 +149,24 @@
                 details.appendChild(name);
                 details.appendChild(size);
 
+                const progressContainer = document.createElement('div');
+                progressContainer.className = 'item-progress-container';
+                progressContainer.style.display = 'none';
+                
+                const progressTrack = document.createElement('div');
+                progressTrack.className = 'item-progress-track';
+                
+                const progressFill = document.createElement('div');
+                progressFill.className = 'item-progress-fill';
+                
+                progressTrack.appendChild(progressFill);
+                progressContainer.appendChild(progressTrack);
+                
+                details.appendChild(progressContainer);
+                
+                // Keep reference to elements in file object for easy access later
+                file.ui = { item, progressContainer, progressFill, removeBtn: null };
+
                 // Remove button with SVG trash icon
                 const removeBtn = document.createElement('button');
                 removeBtn.className = 'remove-btn';
@@ -178,6 +177,7 @@
                     </svg>
                 `;
                 removeBtn.addEventListener('click', () => removeFile(index));
+                file.ui.removeBtn = removeBtn;
 
                 item.appendChild(img);
                 item.appendChild(details);
@@ -203,14 +203,15 @@
 
         let activeXhr = null;
 
-        // Establish long-lived EventSource connection for real-time background processing updates
-        const eventSource = new EventSource('/upload/events');
-        let processingErrors = 0;
+        let fileStatus = []; // tracks state per queued file
 
         function checkAllDone() {
-            if (processedCount >= queuedFiles.length) {
-                if (processingErrors > 0) {
-                    showError(`${processingErrors} file(s) failed to upload/process properly. Redirecting...`);
+            if (queuedFiles.length === 0) return;
+
+            if (activeUploads === 0 && uploadIndex >= queuedFiles.length) {
+                const errCount = fileStatus.filter(s => s && s.error).length;
+                if (errCount > 0) {
+                    showError(`${errCount} file(s) failed to upload/process properly. Redirecting...`);
                     setTimeout(() => window.location.href = '/', 4000);
                 } else {
                     window.location.href = '/';
@@ -218,132 +219,79 @@
             }
         }
 
-        eventSource.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.uuid && (data.status === 'completed' || data.status === 'error')) {
-                    if (data.status === 'error') {
-                        processingErrors++;
-                    }
-                    processedCount++;
-                    checkAllDone();
-                }
-            } catch (err) {
-                console.error('Error parsing SSE event:', err);
-            }
-        };
-
-        eventSource.onerror = (err) => {
-            console.error('EventSource connection error, attempting to reconnect...', err);
-        };
-
         // Progress state:
         //   totalQueueBytes — sum of all file sizes in the queue
         //   uploadedBytes   — sum of sizes for fully uploaded files
         //   currentFileUploadedBytes — bytes sent for the file currently in flight
         //   processedCount  — number of files processed
         //
-        // Represents 100% honest, strictly monotonic byte-based upload progress.
-        let totalQueueBytes = 0;
-        let uploadedBytes = 0;
-        let currentFileUploadedBytes = 0;
-        let processedCount = 0;
+        const maxConcurrentUploads = 3;
+        let uploadIndex = 0;
+        let activeUploads = 0;
 
-        function updateUploadBar() {
-            if (totalQueueBytes === 0) return;
-            const pct = Math.min(100, Math.round(
-                ((uploadedBytes + currentFileUploadedBytes) / totalQueueBytes) * 100
-            ));
-            progressFill.style.width = pct + '%';
-            progressPercent.textContent = pct + '%';
-            if (pct >= 100) {
-                progressStatus.textContent = 'Finishing upload...';
-            }
-        }
-
-        // Pipelined Queue Uploader: starts uploading the next file as soon as the current
-        // file's request body is fully sent (without waiting for the server response).
-        // Each file independently polls for its thumbnail and calls onFileFullyDone() when ready.
-        function uploadNextFile(index) {
-            if (index >= queuedFiles.length) {
-                // All bodies sent — thumbnail polls are running in parallel; wait for them.
+        // Concurrent Queue Uploader: allows up to maxConcurrentUploads files in flight.
+        function uploadNextFile() {
+            if (uploadIndex >= queuedFiles.length) {
                 return;
             }
 
+            const index = uploadIndex;
+            uploadIndex++;
+            activeUploads++;
+
             const activeFile = queuedFiles[index];
+            activeFile.ui.progressContainer.style.display = 'block';
 
-            // 1. Update active file details in the M3 Card
-            const activeCard = document.getElementById('active-upload-card');
-            const activePreview = document.getElementById('active-upload-preview');
-            const activeName = document.getElementById('active-upload-name');
-            const activeQueue = document.getElementById('active-upload-queue-status');
-
-            activeCard.style.display = 'flex';
-            activeName.textContent = activeFile.name;
-            activeQueue.textContent = `Uploading file ${index + 1} of ${queuedFiles.length}`;
-
-            // Create object URL for 150px thumbnail
-            const previewUrl = URL.createObjectURL(activeFile);
-            activePreview.src = previewUrl;
-
-            // 2. Prepare Form Data containing JUST this single file
             const formData = new FormData();
             formData.append('images', activeFile);
 
-            // 3. Initiate request
             const xhr = new XMLHttpRequest();
-            activeXhr = xhr;
             xhr.open('POST', '/upload', true);
 
-            // Progress tracking — track this file's uploaded bytes for the upload bar
             xhr.upload.addEventListener('progress', (e) => {
-                if (e.lengthComputable) {
-                    currentFileUploadedBytes = e.loaded;
-                    updateUploadBar();
+                if (e.lengthComputable && e.total > 0) {
+                    const pct = Math.min(100, Math.round((e.loaded / e.total) * 100));
+                    activeFile.ui.progressFill.style.width = pct + '%';
                 }
             });
 
-            // Body fully sent — pipeline: start next file, advance the upload counter
             xhr.upload.addEventListener('load', () => {
-                URL.revokeObjectURL(previewUrl);
-                uploadedBytes += activeFile.size;
-                currentFileUploadedBytes = 0;
-                updateUploadBar();
-                uploadNextFile(index + 1);
+                activeFile.ui.progressFill.style.width = '100%';
+                activeFile.ui.item.classList.add('processing');
             });
 
-            // Server response: parse UUID and begin polling for thumbnail readiness in parallel.
-            // The progress bar is NOT updated here — polling is silent to the user.
             xhr.addEventListener('load', () => {
+                activeUploads--;
+
                 if (xhr.status < 200 || xhr.status >= 300) {
-                    let errMsg = 'Upload failed. Server error.';
+                    fileStatus[index].error = true;
+                    checkAllDone();
+                } else {
+                    let uuid = null, ext = null;
                     try {
                         const resp = JSON.parse(xhr.responseText);
-                        if (resp.error) errMsg = resp.error;
+                        uuid = resp.uuid;
+                        ext = resp.ext;
                     } catch (e) { }
-                    resetUploadUI(errMsg);
-                    return;
-                }
-                let uuid = null, ext = null;
-                try {
-                    const resp = JSON.parse(xhr.responseText);
-                    uuid = resp.uuid;
-                    ext = resp.ext;
-                } catch (e) { }
 
-                if (!uuid || !ext) {
-                    // If server didn't return UUID, treat as processed (failed)
-                    processingErrors++;
-                    processedCount++;
+                    if (!uuid || !ext) {
+                        fileStatus[index].error = true;
+                    } else {
+                        fileStatus[index].uuid = uuid;
+                        // Snap to 100% and fade out
+                        activeFile.ui.progressFill.style.width = '100%';
+                        setTimeout(() => activeFile.ui.item.classList.add('done'), 150);
+                    }
                     checkAllDone();
                 }
-                // If we got UUID, we just wait for SSE to fire.
+                uploadNextFile();
             });
 
-            // Network error
             xhr.addEventListener('error', () => {
-                URL.revokeObjectURL(previewUrl);
-                resetUploadUI('Network error occurred during upload.');
+                activeUploads--;
+                fileStatus[index].error = true;
+                checkAllDone();
+                uploadNextFile();
             });
 
             xhr.send(formData);
@@ -354,47 +302,40 @@
             if (queuedFiles.length === 0) return;
 
             errorMessage.textContent = '';
-            progressContainer.style.display = 'block';
             uploadBtn.disabled = true;
             dropzone.style.pointerEvents = 'none';
 
-            // Hide the staged list and title during upload to keep focus on progress
-            stagedTitle.style.display = 'none';
-            stagedList.style.display = 'none';
+            queuedFiles.forEach(f => {
+                if (f.ui.removeBtn) {
+                    f.ui.removeBtn.style.display = 'none';
+                }
+            });
 
             // Reset all counters for this upload session
-            totalQueueBytes = queuedFiles.reduce((sum, f) => sum + f.size, 0);
-            uploadedBytes = 0;
-            currentFileUploadedBytes = 0;
-            processedCount = 0;
-            progressFill.style.width = '0%';
-            progressPercent.textContent = '0%';
-            progressStatus.textContent = 'Uploading...';
+            fileStatus = Array.from({ length: queuedFiles.length }, () => ({ uuid: null, error: false }));
+            uploadIndex = 0;
+            activeUploads = 0;
 
-            // Start pipelined upload
-            uploadNextFile(0);
+            // Start parallel upload
+            const toStart = Math.min(maxConcurrentUploads, queuedFiles.length);
+            for (let i = 0; i < toStart; i++) {
+                uploadNextFile();
+            }
         });
 
         // Reset UI after an error
         function resetUploadUI(errorMsg) {
             showError(errorMsg);
 
-            // Hide the active preview card
-            const activeCard = document.getElementById('active-upload-card');
-            activeCard.style.display = 'none';
-            document.getElementById('active-upload-preview').src = '';
-
-            // Restore staged list and title for corrections
-            stagedTitle.style.display = 'block';
-            stagedList.style.display = 'flex';
-
-            progressContainer.style.display = 'none';
-            progressFill.style.width = '0%';
-            progressPercent.textContent = '0%';
-            progressStatus.textContent = 'Uploading...';
             uploadBtn.disabled = false;
             dropzone.style.pointerEvents = 'auto';
             stagedList.style.pointerEvents = 'auto';
+
+            queuedFiles.forEach(f => {
+                if (f.ui.removeBtn) {
+                    f.ui.removeBtn.style.display = 'flex';
+                }
+            });
         }
     </script>
 </body>
