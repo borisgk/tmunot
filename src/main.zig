@@ -52,6 +52,9 @@ pub fn main(init: std.process.Init) !void {
     var auth_ctx = try auth.AuthContext.init(allocator, io, "users.json");
     defer auth_ctx.deinit();
 
+    // Start background image processing queue worker
+    try processor.startQueueWorker();
+
     // 7. Start web server
     try server.startServer(init.io, auth_ctx, config);
 }

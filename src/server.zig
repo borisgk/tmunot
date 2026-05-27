@@ -146,6 +146,9 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, auth_ctx: *auth.Auth
             try req.respond(html, .{
                 .extra_headers = &.{
                     .{ .name = "content-type", .value = "text/html" },
+                    .{ .name = "cache-control", .value = "no-store, no-cache, must-revalidate, proxy-revalidate" },
+                    .{ .name = "pragma", .value = "no-cache" },
+                    .{ .name = "expires", .value = "0" },
                 },
             });
             return;

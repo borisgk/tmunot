@@ -778,7 +778,7 @@ body {
     display: flex;
     gap: 4px;
     width: 100%;
-    height: 4px;
+    height: 6px;
     background: transparent;
     overflow: visible;
 }
@@ -787,7 +787,7 @@ body {
     flex: 1;
     height: 100%;
     background: var(--md-sys-color-surface-container-high);
-    border-radius: 2px;
+    border-radius: 3px;
     overflow: hidden;
 }
 
@@ -795,6 +795,50 @@ body {
     width: 0%;
     height: 100%;
     background: var(--md-sys-color-primary);
-    border-radius: 2px;
-    transition: width 0.1s linear;
+    border-radius: 3px;
+    transition: width 0.15s linear, background-color 0.3s ease;
+}
+
+/* Processing bar uses a distinct teal accent color */
+.progress-segment-track--process {
+    background: color-mix(in srgb, var(--md-sys-color-primary) 12%, var(--md-sys-color-surface-container-high));
+}
+
+.progress-segment-fill--process {
+    background: color-mix(in srgb, var(--md-sys-color-primary) 45%, #00897b);
+}
+
+/* --- Dual Progress Bar Layout --- */
+.progress-row {
+    margin-bottom: 1rem;
+}
+
+.progress-row-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.4rem;
+}
+
+.progress-row-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--md-sys-color-on-surface-variant);
+}
+
+.progress-row-percent {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--md-sys-color-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.progress-overall-status {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--md-sys-color-on-surface-variant);
+    text-align: center;
+    margin-top: 0.25rem;
 }

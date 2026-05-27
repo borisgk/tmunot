@@ -8,6 +8,7 @@ pub const SQLITE_ROW: c_int = 100;
 pub const SQLITE_DONE: c_int = 101;
 pub const SQLITE_NULL: c_int = 5;
 
+pub const SQLITE_OPEN_READONLY: c_int = 0x00000001;
 pub const SQLITE_OPEN_READWRITE: c_int = 0x00000002;
 pub const SQLITE_OPEN_CREATE: c_int = 0x00000004;
 pub const SQLITE_OPEN_FULLMUTEX: c_int = 0x00010000;
@@ -81,6 +82,172 @@ pub const PhotoRecord = struct {
     height: ?i32,
 };
 
+pub const PhotoExifRecord = struct {
+    uuid: []const u8,
+    GPSVersionID: ?[]const u8 = null,
+    InteroperabilityIndex: ?[]const u8 = null,
+    InteroperabilityVersion: ?[]const u8 = null,
+    GPSLongitudeRef: ?[]const u8 = null,
+    GPSLongitude: ?[]const u8 = null,
+    GPSAltitudeRef: ?[]const u8 = null,
+    GPSAltitude: ?[]const u8 = null,
+    GPSTimeStamp: ?[]const u8 = null,
+    GPSSatellites: ?[]const u8 = null,
+    GPSStatus: ?[]const u8 = null,
+    GPSMeasureMode: ?[]const u8 = null,
+    GPSDOP: ?[]const u8 = null,
+    GPSSpeedRef: ?[]const u8 = null,
+    GPSSpeed: ?[]const u8 = null,
+    GPSTrackRef: ?[]const u8 = null,
+    GPSTrack: ?[]const u8 = null,
+    GPSImgDirectionRef: ?[]const u8 = null,
+    GPSImgDirection: ?[]const u8 = null,
+    GPSMapDatum: ?[]const u8 = null,
+    GPSDestLatitudeRef: ?[]const u8 = null,
+    GPSDestLatitude: ?[]const u8 = null,
+    GPSDestLongitudeRef: ?[]const u8 = null,
+    GPSDestLongitude: ?[]const u8 = null,
+    GPSDestBearingRef: ?[]const u8 = null,
+    GPSDestBearing: ?[]const u8 = null,
+    GPSDestDistanceRef: ?[]const u8 = null,
+    GPSDestDistance: ?[]const u8 = null,
+    GPSProcessingMethod: ?[]const u8 = null,
+    GPSAreaInformation: ?[]const u8 = null,
+    GPSDateStamp: ?[]const u8 = null,
+    GPSDifferential: ?[]const u8 = null,
+    GPSHPositioningError: ?[]const u8 = null,
+    NewSubfileType: ?[]const u8 = null,
+    ImageWidth: ?[]const u8 = null,
+    ImageLength: ?[]const u8 = null,
+    BitsPerSample: ?[]const u8 = null,
+    Compression: ?[]const u8 = null,
+    PhotometricInterpretation: ?[]const u8 = null,
+    FillOrder: ?[]const u8 = null,
+    DocumentName: ?[]const u8 = null,
+    ImageDescription: ?[]const u8 = null,
+    Make: ?[]const u8 = null,
+    Model: ?[]const u8 = null,
+    StripOffsets: ?[]const u8 = null,
+    Orientation: ?[]const u8 = null,
+    SamplesPerPixel: ?[]const u8 = null,
+    RowsPerStrip: ?[]const u8 = null,
+    StripByteCounts: ?[]const u8 = null,
+    XResolution: ?[]const u8 = null,
+    YResolution: ?[]const u8 = null,
+    PlanarConfiguration: ?[]const u8 = null,
+    ResolutionUnit: ?[]const u8 = null,
+    TransferFunction: ?[]const u8 = null,
+    Software: ?[]const u8 = null,
+    DateTime: ?[]const u8 = null,
+    Artist: ?[]const u8 = null,
+    WhitePoint: ?[]const u8 = null,
+    PrimaryChromaticities: ?[]const u8 = null,
+    SubIFDs: ?[]const u8 = null,
+    TransferRange: ?[]const u8 = null,
+    JPEGProc: ?[]const u8 = null,
+    JPEGInterchangeFormat: ?[]const u8 = null,
+    JPEGInterchangeFormatLength: ?[]const u8 = null,
+    YCbCrCoefficients: ?[]const u8 = null,
+    YCbCrSubSampling: ?[]const u8 = null,
+    YCbCrPositioning: ?[]const u8 = null,
+    ReferenceBlackWhite: ?[]const u8 = null,
+    XMLPacket: ?[]const u8 = null,
+    RelatedImageFileFormat: ?[]const u8 = null,
+    RelatedImageWidth: ?[]const u8 = null,
+    RelatedImageLength: ?[]const u8 = null,
+    CFARepeatPatternDim: ?[]const u8 = null,
+    CFAPattern: ?[]const u8 = null,
+    BatteryLevel: ?[]const u8 = null,
+    Copyright: ?[]const u8 = null,
+    ExposureTime: ?[]const u8 = null,
+    FNumber: ?[]const u8 = null,
+    IPTCNAA: ?[]const u8 = null,
+    ImageResources: ?[]const u8 = null,
+    InterColorProfile: ?[]const u8 = null,
+    ExposureProgram: ?[]const u8 = null,
+    SpectralSensitivity: ?[]const u8 = null,
+    ISOSpeedRatings: ?[]const u8 = null,
+    OECF: ?[]const u8 = null,
+    TimeZoneOffset: ?[]const u8 = null,
+    SensitivityType: ?[]const u8 = null,
+    StandardOutputSensitivity: ?[]const u8 = null,
+    RecommendedExposureIndex: ?[]const u8 = null,
+    @"ISO Speed": ?[]const u8 = null,
+    @"ISO Speed Latitude yyy": ?[]const u8 = null,
+    @"ISO Speed Latitude zzz": ?[]const u8 = null,
+    ExifVersion: ?[]const u8 = null,
+    DateTimeOriginal: ?[]const u8 = null,
+    DateTimeDigitized: ?[]const u8 = null,
+    OffsetTime: ?[]const u8 = null,
+    OffsetTimeOriginal: ?[]const u8 = null,
+    OffsetTimeDigitized: ?[]const u8 = null,
+    ComponentsConfiguration: ?[]const u8 = null,
+    CompressedBitsPerPixel: ?[]const u8 = null,
+    ShutterSpeedValue: ?[]const u8 = null,
+    ApertureValue: ?[]const u8 = null,
+    BrightnessValue: ?[]const u8 = null,
+    ExposureBiasValue: ?[]const u8 = null,
+    MaxApertureValue: ?[]const u8 = null,
+    SubjectDistance: ?[]const u8 = null,
+    MeteringMode: ?[]const u8 = null,
+    LightSource: ?[]const u8 = null,
+    Flash: ?[]const u8 = null,
+    FocalLength: ?[]const u8 = null,
+    SubjectArea: ?[]const u8 = null,
+    TIFFEPStandardID: ?[]const u8 = null,
+    MakerNote: ?[]const u8 = null,
+    UserComment: ?[]const u8 = null,
+    SubsecTime: ?[]const u8 = null,
+    SubSecTimeOriginal: ?[]const u8 = null,
+    SubSecTimeDigitized: ?[]const u8 = null,
+    XPTitle: ?[]const u8 = null,
+    XPComment: ?[]const u8 = null,
+    XPAuthor: ?[]const u8 = null,
+    XPKeywords: ?[]const u8 = null,
+    XPSubject: ?[]const u8 = null,
+    FlashpixVersion: ?[]const u8 = null,
+    ColorSpace: ?[]const u8 = null,
+    PixelXDimension: ?[]const u8 = null,
+    PixelYDimension: ?[]const u8 = null,
+    RelatedSoundFile: ?[]const u8 = null,
+    FlashEnergy: ?[]const u8 = null,
+    SpatialFrequencyResponse: ?[]const u8 = null,
+    FocalPlaneXResolution: ?[]const u8 = null,
+    FocalPlaneYResolution: ?[]const u8 = null,
+    FocalPlaneResolutionUnit: ?[]const u8 = null,
+    SubjectLocation: ?[]const u8 = null,
+    ExposureIndex: ?[]const u8 = null,
+    SensingMethod: ?[]const u8 = null,
+    FileSource: ?[]const u8 = null,
+    SceneType: ?[]const u8 = null,
+    CustomRendered: ?[]const u8 = null,
+    ExposureMode: ?[]const u8 = null,
+    WhiteBalance: ?[]const u8 = null,
+    DigitalZoomRatio: ?[]const u8 = null,
+    FocalLengthIn35mmFilm: ?[]const u8 = null,
+    SceneCaptureType: ?[]const u8 = null,
+    GainControl: ?[]const u8 = null,
+    Contrast: ?[]const u8 = null,
+    Saturation: ?[]const u8 = null,
+    Sharpness: ?[]const u8 = null,
+    DeviceSettingDescription: ?[]const u8 = null,
+    SubjectDistanceRange: ?[]const u8 = null,
+    ImageUniqueID: ?[]const u8 = null,
+    CameraOwnerName: ?[]const u8 = null,
+    BodySerialNumber: ?[]const u8 = null,
+    LensSpecification: ?[]const u8 = null,
+    LensMake: ?[]const u8 = null,
+    LensModel: ?[]const u8 = null,
+    LensSerialNumber: ?[]const u8 = null,
+    CompositeImage: ?[]const u8 = null,
+    SourceImageNumberOfCompositeImage: ?[]const u8 = null,
+    SourceExposureTimesOfCompositeImage: ?[]const u8 = null,
+    Gamma: ?[]const u8 = null,
+    PrintImageMatching: ?[]const u8 = null,
+    Padding: ?[]const u8 = null,
+};
+
+
 pub const LocationRecord = struct {
     username: []const u8,
     year: []const u8,
@@ -146,9 +313,28 @@ pub fn init(allocator: std.mem.Allocator, io: std.Io, db_path: []const u8) !void
         \\CREATE INDEX IF NOT EXISTS idx_photos_shooting_upload ON photos(shooting_date, upload_date);
     ;
 
+    const create_exif_sql = comptime blk: {
+        @setEvalBranchQuota(10000);
+        var sql: []const u8 = "CREATE TABLE IF NOT EXISTS photo_exif (uuid TEXT PRIMARY KEY REFERENCES photos(uuid) ON DELETE CASCADE";
+        for (std.meta.fields(PhotoExifRecord)) |field| {
+            if (std.mem.eql(u8, field.name, "uuid")) continue;
+            sql = sql ++ ", \"" ++ field.name ++ "\" TEXT";
+        }
+        sql = sql ++ ");\nCREATE INDEX IF NOT EXISTS idx_photo_exif_make ON photo_exif(\"Make\");\nCREATE INDEX IF NOT EXISTS idx_photo_exif_model ON photo_exif(\"Model\");\x00";
+        break :blk sql;
+    };
+
     const create_rc = sqlite3_exec(db_conn, create_sql, null, null, &err_msg);
     if (create_rc != SQLITE_OK) {
         std.debug.print("Failed to run migrations: {s}\n", .{err_msg});
+        if (err_msg) |msg| sqlite3_free(msg);
+        return error.SqliteExecFailed;
+    }
+    if (err_msg) |msg| sqlite3_free(msg);
+
+    const create_exif_rc = sqlite3_exec(db_conn, create_exif_sql.ptr, null, null, &err_msg);
+    if (create_exif_rc != SQLITE_OK) {
+        std.debug.print("Failed to run exif migrations: {s}\n", .{err_msg});
         if (err_msg) |msg| sqlite3_free(msg);
         return error.SqliteExecFailed;
     }
@@ -248,16 +434,23 @@ pub fn updatePhotoDimensions(uuid: []const u8, width: i32, height: i32) !void {
 }
 
 pub fn getPhotoLocation(uuid: []const u8, allocator: std.mem.Allocator) !?LocationRecord {
-    const io = global_io orelse return error.DbNotInitialized;
-    db_mutex.lockUncancelable(io);
-    defer db_mutex.unlock(io);
-
-    const db = db_conn orelse return error.DbNotInitialized;
+    var local_db: ?*sqlite3 = null;
+    const rc_open = sqlite3_open_v2(
+        "photos.db",
+        &local_db,
+        SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX,
+        null,
+    );
+    if (rc_open != SQLITE_OK) {
+        if (local_db) |ldb| _ = sqlite3_close(ldb);
+        return error.SqliteOpenFailed;
+    }
+    defer _ = sqlite3_close(local_db);
 
     const sql = "SELECT username, year, month, extension FROM photos WHERE uuid = ?;";
 
     var stmt: ?*sqlite3_stmt = null;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, null) != SQLITE_OK) {
+    if (sqlite3_prepare_v2(local_db, sql, -1, &stmt, null) != SQLITE_OK) {
         return error.SqlitePrepareFailed;
     }
     defer _ = sqlite3_finalize(stmt);
@@ -285,7 +478,7 @@ pub fn getPhotoLocation(uuid: []const u8, allocator: std.mem.Allocator) !?Locati
     } else if (rc == SQLITE_DONE) {
         return null;
     } else {
-        std.debug.print("Failed to get photo location: {s}\n", .{sqlite3_errmsg(db)});
+        std.debug.print("Failed to get photo location: {s}\n", .{sqlite3_errmsg(local_db)});
         return error.SqliteSelectFailed;
     }
 }
@@ -377,3 +570,53 @@ pub fn getUserPhotos(username: []const u8, allocator: std.mem.Allocator) ![]Phot
 
     return try list.toOwnedSlice(allocator);
 }
+
+pub fn insertPhotoExif(record: PhotoExifRecord) !void {
+    @setEvalBranchQuota(10000);
+    const io = global_io orelse return error.DbNotInitialized;
+    db_mutex.lockUncancelable(io);
+    defer db_mutex.unlock(io);
+
+    const db = db_conn orelse return error.DbNotInitialized;
+
+    const insert_sql = comptime blk: {
+        @setEvalBranchQuota(10000);
+        var cols: []const u8 = "INSERT INTO photo_exif (uuid";
+        var vals: []const u8 = "VALUES (?";
+        for (std.meta.fields(PhotoExifRecord)) |field| {
+            if (std.mem.eql(u8, field.name, "uuid")) continue;
+            cols = cols ++ ", \"" ++ field.name ++ "\"";
+            vals = vals ++ ", ?";
+        }
+        break :blk cols ++ ") " ++ vals ++ ");";
+    };
+
+    var stmt: ?*sqlite3_stmt = null;
+    if (sqlite3_prepare_v2(db, insert_sql, -1, &stmt, null) != SQLITE_OK) {
+        std.debug.print("Failed to prepare EXIF insert statement: {s}\n", .{sqlite3_errmsg(db)});
+        return error.SqlitePrepareFailed;
+    }
+    defer _ = sqlite3_finalize(stmt);
+
+    _ = sqlite3_bind_text(stmt, 1, record.uuid.ptr, @intCast(record.uuid.len), SQLITE_TRANSIENT);
+    
+    var idx: c_int = 2;
+    inline for (std.meta.fields(PhotoExifRecord)) |field| {
+        if (!comptime std.mem.eql(u8, field.name, "uuid")) {
+            const val_opt = @field(record, field.name);
+            if (val_opt) |val| {
+                _ = sqlite3_bind_text(stmt, idx, val.ptr, @intCast(val.len), SQLITE_TRANSIENT);
+            } else {
+                _ = sqlite3_bind_null(stmt, idx);
+            }
+            idx += 1;
+        }
+    }
+
+    const rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        std.debug.print("Failed to insert photo EXIF: {s}\n", .{sqlite3_errmsg(db)});
+        return error.SqliteInsertFailed;
+    }
+}
+

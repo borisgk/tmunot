@@ -181,6 +181,17 @@ pub fn handleUpload(
     const uuid = try generateUuid(req_alloc, io);
     defer req_alloc.free(uuid);
 
+    const full_exif_record = try exif.extractFullExifFromBuffer(req_alloc, file_content, uuid);
+    defer {
+        @setEvalBranchQuota(10000);
+        inline for (std.meta.fields(db.PhotoExifRecord)) |field| {
+            if (comptime !std.mem.eql(u8, field.name, "uuid")) {
+                if (@field(full_exif_record, field.name)) |v| req_alloc.free(v);
+            }
+        }
+        req_alloc.free(full_exif_record.uuid);
+    }
+
     logger.logEvent(uuid, "file received", t_received, t_received);
     logger.logEvent(uuid, "exif read", t_received, t_exif);
 
@@ -220,21 +231,17 @@ pub fn handleUpload(
         .height = height,
     };
     try db.insertPhoto(record);
+    try db.insertPhotoExif(full_exif_record);
     const t_db = vips.getWallMillis();
     logger.logEvent(uuid, "database updated", t_received, t_db);
 
-    // 9. Dispatch resizing worker with duplicated buffer copy.
-    // The worker runs in a detached thread and outlives this request handler.
-    // We use page_allocator for the job and all its fields so the worker never
-    // touches the shared GPA or the req_alloc arena (which is freed on return).
+    // 9. Allocate a FileJob on page_allocator for the background worker queue.
+    // The worker reads the photo from disk (saved at orig_path), eliminating RAM buffer copies.
     const job_alloc = std.heap.page_allocator;
-    const buffer_copy = try job_alloc.dupe(u8, file_content);
-    errdefer job_alloc.free(buffer_copy);
 
     const job = try job_alloc.create(processor.FileJob);
     job.* = .{
         .allocator = job_alloc,
-        .buffer = buffer_copy,
         .uuid = try job_alloc.dupe(u8, uuid),
         .username = try job_alloc.dupe(u8, user),
         .year = try job_alloc.dupe(u8, year),
@@ -244,10 +251,14 @@ pub fn handleUpload(
         .t_start = t_received,
     };
 
-    const thread = try std.Thread.spawn(.{}, processor.worker, .{job});
-    thread.detach();
+    // Push the job to the background processing queue
+    processor.pushJob(job);
 
-    try req.respond("{\"status\":\"success\",\"message\":\"Image uploaded and processing started in background.\"}", .{
+    const response_body = try std.fmt.allocPrint(req_alloc,
+        "{{\"status\":\"success\",\"uuid\":\"{s}\",\"ext\":\"{s}\"}}",
+        .{ uuid, ext_clean },
+    );
+    try req.respond(response_body, .{
         .extra_headers = &.{
             .{ .name = "content-type", .value = "application/json" },
         },
