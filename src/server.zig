@@ -83,12 +83,12 @@ fn handleConnection(stream: std.Io.net.Stream, io: std.Io, auth_ctx: *auth.AuthC
         return;
     };
 
-    handleRequest(&request, io, auth_ctx, config) catch |err| {
+    handleRequest(&request, io, stream, auth_ctx, config) catch |err| {
         std.debug.print("Error handling request: {}\n", .{err});
     };
 }
 
-fn handleRequest(req: *std.http.Server.Request, io: std.Io, auth_ctx: *auth.AuthContext, config: config_mod.Config) !void {
+fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.Stream, auth_ctx: *auth.AuthContext, config: config_mod.Config) !void {
     // Per-request arena: all ephemeral allocations live here and are freed together
     // at the end of the request, regardless of which code path is taken.
     var req_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -177,7 +177,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, auth_ctx: *auth.Auth
     }
 
     if (req.head.method == .GET and std.mem.eql(u8, target, "/upload")) {
-        if (!is_authenticated) {
+        if (!is_authenticated or username == null) {
             try req.respond("", .{
                 .status = .see_other,
                 .extra_headers = &.{
@@ -193,6 +193,32 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, auth_ctx: *auth.Auth
             },
         });
         return;
+    }
+
+    if (req.head.method == .GET and std.mem.eql(u8, target, "/upload/events")) {
+        if (!is_authenticated or username == null) {
+            try req.respond("Unauthorized", .{ .status = .unauthorized });
+            return;
+        }
+
+        // Send custom SSE headers using the stream's writer directly
+        var header_buf: [256]u8 = undefined;
+        var stream_writer = stream.writer(io, &header_buf);
+        try stream_writer.interface.writeAll("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n");
+        try stream_writer.interface.flush(); // FLUSH HEADERS IMMEDIATELY!
+
+        // Register the stream as an active SSE client
+        try processor.addSseClient(stream, username.?);
+
+        // Yield/keep alive stream until disconnected using non-blocking io.sleep
+        while (true) {
+            try io.sleep(std.Io.Duration.fromSeconds(15), .awake);
+            const ok = processor.writeKeepAlive(stream) catch false;
+            if (!ok) {
+                processor.removeSseClient(stream);
+                return;
+            }
+        }
     }
 
     if (req.head.method == .POST and std.mem.eql(u8, target, "/upload")) {

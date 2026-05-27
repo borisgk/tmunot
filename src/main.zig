@@ -53,7 +53,7 @@ pub fn main(init: std.process.Init) !void {
     defer auth_ctx.deinit();
 
     // Start background image processing queue worker
-    try processor.startQueueWorker();
+    try processor.startQueueWorker(allocator, io);
 
     // 7. Start web server
     try server.startServer(init.io, auth_ctx, config);

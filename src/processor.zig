@@ -1,6 +1,8 @@
 const std = @import("std");
 const vips = @import("vips.zig");
 const logger = @import("logger.zig");
+const db = @import("db.zig");
+const exif = @import("exif.zig");
 
 pub extern "c" fn usleep(useconds: c_uint) c_int;
 
@@ -8,25 +10,230 @@ pub const FileJob = struct {
     allocator: std.mem.Allocator,
     uuid: []const u8,           // Photo UUID
     username: []const u8,       // Username of the owner
+    filename: []const u8,       // Original filename
     year: []const u8,           // Chronological year
     month: []const u8,          // Chronological month
+    day: []const u8,            // Chronological day
+    upload_date: []const u8,    // Date when uploaded
     extension: []const u8,      // Lowercase file extension
     quality: i32,
     t_start: f64,
     next: ?*FileJob = null,
 };
 
+// Queue state
 var job_queue_mutex: std.atomic.Mutex = .unlocked;
 var job_queue_head: ?*FileJob = null;
 var job_queue_tail: ?*FileJob = null;
-var worker_thread: ?std.Thread = null;
+var job_queue_sem = std.Io.Semaphore{};
+var worker_threads: ?[]std.Thread = null;
 var worker_should_exit: bool = false;
+var global_io: ?std.Io = null;
+
+// Registry State
+pub const JobStatus = enum {
+    pending,
+    processing,
+};
+
+pub const ActiveJob = struct {
+    username: []const u8,
+    year: []const u8,
+    month: []const u8,
+    extension: []const u8,
+    status: JobStatus,
+};
+
+var registry_mutex: std.atomic.Mutex = .unlocked;
+var active_jobs: ?std.StringHashMap(ActiveJob) = null;
+var registry_allocator: ?std.mem.Allocator = null;
+
+pub fn initRegistry(allocator: std.mem.Allocator) void {
+    while (!registry_mutex.tryLock()) {
+        std.atomic.spinLoopHint();
+    }
+    defer registry_mutex.unlock();
+
+    if (active_jobs == null) {
+        active_jobs = std.StringHashMap(ActiveJob).init(allocator);
+        registry_allocator = allocator;
+    }
+}
+
+pub fn registerJob(uuid: []const u8, username: []const u8, year: []const u8, month: []const u8, extension: []const u8) !void {
+    while (!registry_mutex.tryLock()) {
+        std.atomic.spinLoopHint();
+    }
+    defer registry_mutex.unlock();
+
+    if (active_jobs) |*map| {
+        const alloc = registry_allocator orelse return error.RegistryNotInitialized;
+        const job = ActiveJob{
+            .username = try alloc.dupe(u8, username),
+            .year = try alloc.dupe(u8, year),
+            .month = try alloc.dupe(u8, month),
+            .extension = try alloc.dupe(u8, extension),
+            .status = .pending,
+        };
+        const dupe_uuid = try alloc.dupe(u8, uuid);
+        try map.put(dupe_uuid, job);
+    }
+}
+
+pub fn updateJobStatus(uuid: []const u8, status: JobStatus) void {
+    while (!registry_mutex.tryLock()) {
+        std.atomic.spinLoopHint();
+    }
+    defer registry_mutex.unlock();
+
+    if (active_jobs) |*map| {
+        if (map.getPtr(uuid)) |job| {
+            job.status = status;
+        }
+    }
+}
+
+pub fn removeJob(uuid: []const u8) void {
+    while (!registry_mutex.tryLock()) {
+        std.atomic.spinLoopHint();
+    }
+    defer registry_mutex.unlock();
+
+    if (active_jobs) |*map| {
+        if (map.fetchRemove(uuid)) |kv| {
+            const alloc = registry_allocator orelse return;
+            alloc.free(kv.key);
+            alloc.free(kv.value.username);
+            alloc.free(kv.value.year);
+            alloc.free(kv.value.month);
+            alloc.free(kv.value.extension);
+        }
+    }
+}
+
+pub fn getActiveJob(uuid: []const u8, allocator: std.mem.Allocator) !?ActiveJob {
+    while (!registry_mutex.tryLock()) {
+        std.atomic.spinLoopHint();
+    }
+    defer registry_mutex.unlock();
+
+    if (active_jobs) |map| {
+        if (map.get(uuid)) |job| {
+            return ActiveJob{
+                .username = try allocator.dupe(u8, job.username),
+                .year = try allocator.dupe(u8, job.year),
+                .month = try allocator.dupe(u8, job.month),
+                .extension = try allocator.dupe(u8, job.extension),
+                .status = job.status,
+            };
+        }
+    }
+    return null;
+}
+
+// SSE Connection state
+pub const SseClient = struct {
+    stream: std.Io.net.Stream,
+    username: []const u8,
+};
+
+var sse_mutex: std.atomic.Mutex = .unlocked;
+var sse_clients = std.ArrayList(SseClient).empty;
+var sse_allocator: ?std.mem.Allocator = null;
+
+pub fn addSseClient(stream: std.Io.net.Stream, username: []const u8) !void {
+    while (!sse_mutex.tryLock()) {
+        std.atomic.spinLoopHint();
+    }
+    defer sse_mutex.unlock();
+
+    const alloc = sse_allocator orelse return error.RegistryNotInitialized;
+    try sse_clients.append(alloc, .{
+        .stream = stream,
+        .username = try alloc.dupe(u8, username),
+    });
+    std.debug.print("Added SSE client for user: {s}, count: {d}\n", .{ username, sse_clients.items.len });
+}
+
+pub fn removeSseClient(stream: std.Io.net.Stream) void {
+    while (!sse_mutex.tryLock()) {
+        std.atomic.spinLoopHint();
+    }
+    defer sse_mutex.unlock();
+
+    const alloc = sse_allocator orelse return;
+    var i: usize = 0;
+    while (i < sse_clients.items.len) {
+        if (sse_clients.items[i].stream.socket.handle == stream.socket.handle) {
+            const client = sse_clients.orderedRemove(i);
+            alloc.free(client.username);
+            std.debug.print("Removed SSE client, remaining count: {d}\n", .{ sse_clients.items.len });
+        } else {
+            i += 1;
+        }
+    }
+}
+
+pub fn broadcastSseEvent(uuid: []const u8, status: []const u8, ext: []const u8, target_user: []const u8) void {
+    while (!sse_mutex.tryLock()) {
+        std.atomic.spinLoopHint();
+    }
+    defer sse_mutex.unlock();
+
+    const io = global_io orelse return;
+    const alloc = sse_allocator orelse return;
+
+    const payload = std.fmt.allocPrint(alloc,
+        "data: {{\"uuid\":\"{s}\",\"status\":\"{s}\",\"ext\":\"{s}\"}}\n\n",
+        .{ uuid, status, ext }
+    ) catch return;
+    defer alloc.free(payload);
+
+    var i: usize = 0;
+    while (i < sse_clients.items.len) {
+        const client = sse_clients.items[i];
+        if (std.mem.eql(u8, client.username, target_user)) {
+            var write_buf: [256]u8 = undefined;
+            var writer = client.stream.writer(io, &write_buf);
+            writer.interface.writeAll(payload) catch {
+                const removed = sse_clients.orderedRemove(i);
+                alloc.free(removed.username);
+                removed.stream.close(io);
+                continue;
+            };
+            writer.interface.flush() catch {
+                const removed = sse_clients.orderedRemove(i);
+                alloc.free(removed.username);
+                removed.stream.close(io);
+                continue;
+            };
+        }
+        i += 1;
+    }
+}
+
+pub fn writeKeepAlive(stream: std.Io.net.Stream) !bool {
+    while (!sse_mutex.tryLock()) {
+        std.atomic.spinLoopHint();
+    }
+    defer sse_mutex.unlock();
+
+    const io = global_io orelse return false;
+    var write_buf: [256]u8 = undefined;
+    var writer = stream.writer(io, &write_buf);
+    writer.interface.writeAll(": keep-alive\n\n") catch {
+        return false;
+    };
+    writer.interface.flush() catch {
+        return false;
+    };
+    return true;
+}
 
 pub fn pushJob(job: *FileJob) void {
     while (!job_queue_mutex.tryLock()) {
         std.atomic.spinLoopHint();
     }
-    defer job_queue_mutex.unlock();
 
     job.next = null;
     if (job_queue_tail) |tail| {
@@ -35,6 +242,11 @@ pub fn pushJob(job: *FileJob) void {
     } else {
         job_queue_head = job;
         job_queue_tail = job;
+    }
+    job_queue_mutex.unlock();
+
+    if (global_io) |io| {
+        job_queue_sem.post(io);
     }
 }
 
@@ -54,20 +266,37 @@ fn popJob() ?*FileJob {
     return null;
 }
 
-pub fn startQueueWorker() !void {
-    if (worker_thread != null) return;
+pub fn startQueueWorker(allocator: std.mem.Allocator, io: std.Io) !void {
+    if (worker_threads != null) return;
     worker_should_exit = false;
-    worker_thread = try std.Thread.spawn(.{}, queueWorkerLoop, .{});
+    global_io = io;
+
+    // Initialize registry and sse allocator
+    initRegistry(allocator);
+    while (!sse_mutex.tryLock()) {
+        std.atomic.spinLoopHint();
+    }
+    sse_allocator = allocator;
+    sse_clients = std.ArrayList(SseClient).empty;
+    sse_mutex.unlock();
+
+    const worker_count = 2; // concurrent worker threads
+    var threads = try allocator.alloc(std.Thread, worker_count);
+    for (0..worker_count) |i| {
+        threads[i] = try std.Thread.spawn(.{}, queueWorkerLoop, .{});
+    }
+    worker_threads = threads;
 }
 
 fn queueWorkerLoop() void {
     std.debug.print("Background image processing queue worker started.\n", .{});
+    const io = global_io.?;
     while (!worker_should_exit) {
+        job_queue_sem.waitUncancelable(io);
+        if (worker_should_exit) break;
+
         if (popJob()) |job| {
             processJob(job);
-        } else {
-            // Sleep for 20ms to avoid high CPU consumption
-            _ = usleep(20 * 1000);
         }
     }
 }
@@ -93,14 +322,120 @@ fn makeDirPathSync(allocator: std.mem.Allocator, target_dir: []const u8) !void {
 
 fn processJob(job: *FileJob) void {
     const t_start = vips.getThreadCpuMillis();
+    var is_error = true;
     defer {
+        removeJob(job.uuid);
+        broadcastSseEvent(job.uuid, if (is_error) "error" else "completed", job.extension, job.username);
+
         job.allocator.free(job.uuid);
         job.allocator.free(job.username);
+        job.allocator.free(job.filename);
         job.allocator.free(job.year);
         job.allocator.free(job.month);
+        job.allocator.free(job.day);
+        job.allocator.free(job.upload_date);
         job.allocator.free(job.extension);
         job.allocator.destroy(job);
     }
+
+    // 1. Mark status as processing in registry
+    updateJobStatus(job.uuid, .processing);
+
+    const io = global_io orelse return;
+
+    // Formulate chronological original path: photos/<username>/originals/<year>/<month>/<uuid>.<ext>
+    const orig_path = std.fmt.allocPrint(job.allocator, "photos/{s}/originals/{s}/{s}/{s}.{s}", .{
+        job.username, job.year, job.month, job.uuid, job.extension
+    }) catch |err| {
+        std.debug.print("Failed to format original path for DB: {}\n", .{err});
+        return;
+    };
+    defer job.allocator.free(orig_path);
+
+    // Read the original file into memory temporarily to extract EXIF
+    const cwd = std.Io.Dir.cwd();
+    var orig_file = cwd.openFile(io, orig_path, .{}) catch |err| {
+        std.debug.print("Failed to open original file for metadata: {}\n", .{err});
+        return;
+    };
+    defer orig_file.close(io);
+
+    const file_size = (orig_file.stat(io) catch |err| {
+        std.debug.print("Failed to stat original file: {}\n", .{err});
+        return;
+    }).size;
+
+    const file_buf = job.allocator.alloc(u8, @intCast(file_size)) catch |err| {
+        std.debug.print("Failed to allocate file buffer: {}\n", .{err});
+        return;
+    };
+    defer job.allocator.free(file_buf);
+
+    var file_reader = orig_file.reader(io, &.{});
+    file_reader.interface.readSliceAll(file_buf) catch |err| {
+        std.debug.print("Failed to read original file contents: {}\n", .{err});
+        return;
+    };
+
+    // Extract EXIF data from RAM buffer
+    const metadata = exif.extractExifFromBuffer(job.allocator, file_buf) catch |err| {
+        std.debug.print("Failed to extract EXIF: {}\n", .{err});
+        return;
+    };
+    defer if (metadata.shooting_date) |sd| job.allocator.free(sd);
+
+    // Determine dimensions in RAM
+    var width = metadata.width;
+    var height = metadata.height;
+    if (width == null or height == null) {
+        const img = vips.vips_image_new_from_buffer(file_buf.ptr, file_buf.len, "", @as(?*anyopaque, null));
+        if (img) |im| {
+            width = vips.vips_image_get_width(im);
+            height = vips.vips_image_get_height(im);
+            vips.g_object_unref(im);
+        }
+    }
+
+    // Extract Full EXIF data for SQLite
+    const full_exif_record = exif.extractFullExifFromBuffer(job.allocator, file_buf, job.uuid) catch |err| {
+        std.debug.print("Failed to extract full EXIF: {}\n", .{err});
+        return;
+    };
+    defer {
+        @setEvalBranchQuota(10000);
+        inline for (std.meta.fields(db.PhotoExifRecord)) |field| {
+            if (comptime !std.mem.eql(u8, field.name, "uuid")) {
+                if (@field(full_exif_record, field.name)) |v| job.allocator.free(v);
+            }
+        }
+        job.allocator.free(full_exif_record.uuid);
+    }
+
+    // Write photo metadata and EXIF records into SQLite
+    const record = db.PhotoRecord{
+        .uuid = job.uuid,
+        .username = job.username,
+        .filename = job.filename,
+        .extension = job.extension,
+        .year = job.year,
+        .month = job.month,
+        .day = job.day,
+        .shooting_date = metadata.shooting_date,
+        .upload_date = job.upload_date,
+        .width = width,
+        .height = height,
+    };
+
+    db.insertPhoto(record) catch |err| {
+        std.debug.print("Failed to insert photo metadata: {}\n", .{err});
+        return;
+    };
+    db.insertPhotoExif(full_exif_record) catch |err| {
+        std.debug.print("Failed to insert photo EXIF: {}\n", .{err});
+        return;
+    };
+    const t_db = vips.getWallMillis();
+    logger.logEvent(job.uuid, "database updated (bg)", job.t_start, t_db);
 
     const TargetSize = struct {
         name: []const u8,
@@ -146,15 +481,6 @@ fn processJob(job: *FileJob) void {
         var next_img: ?*vips.VipsImage = null;
 
         if (idx == 0) {
-            // Construct original chronological path: photos/<username>/originals/<year>/<month>/<uuid>.<ext>
-            const orig_path = std.fmt.allocPrint(job.allocator, "photos/{s}/originals/{s}/{s}/{s}.{s}", .{
-                job.username, job.year, job.month, job.uuid, job.extension
-            }) catch |err| {
-                std.debug.print("Failed to format original image path: {}\n", .{err});
-                return;
-            };
-            defer job.allocator.free(orig_path);
-
             const orig_path_c = std.fmt.allocPrintSentinel(job.allocator, "{s}", .{orig_path}, 0) catch |err| {
                 std.debug.print("Failed to format original image path sentinel: {}\n", .{err});
                 return;
@@ -231,7 +557,8 @@ fn processJob(job: *FileJob) void {
         vips.g_object_unref(img);
     }
 
+    is_error = false;
+
     const elapsed_ms = vips.getThreadCpuMillis() - t_start;
     std.debug.print("Finished background processing '{s}.{s}' in {d:.2} CPU ms\n", .{ job.uuid, job.extension, elapsed_ms });
 }
-

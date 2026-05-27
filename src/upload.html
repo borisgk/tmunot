@@ -203,54 +203,61 @@
 
         let activeXhr = null;
 
-        // Poll for thumbnail readiness: retries GET /thumbnails/{uuid}.{ext} every 100ms
-        // until the server returns 200 (thumbnail written to disk) or 5s timeout elapses.
-        function pollThumbnail(uuid, ext, attempts, callback) {
-            const MAX_ATTEMPTS = 50; // 50 * 100ms = 5s timeout
-            const url = `/thumbnails/${uuid}.${ext}`;
-            const poll = new XMLHttpRequest();
-            poll.open('GET', url, true);
-            poll.onload = () => {
-                if (poll.status === 200) {
-                    callback();
-                } else if (attempts < MAX_ATTEMPTS) {
-                    setTimeout(() => pollThumbnail(uuid, ext, attempts + 1, callback), 100);
+        // Establish long-lived EventSource connection for real-time background processing updates
+        const eventSource = new EventSource('/upload/events');
+        let processingErrors = 0;
+
+        function checkAllDone() {
+            if (processedCount >= queuedFiles.length) {
+                if (processingErrors > 0) {
+                    showError(`${processingErrors} file(s) failed to upload/process properly. Redirecting...`);
+                    setTimeout(() => window.location.href = '/', 4000);
                 } else {
-                    // Timeout — proceed anyway so the queue doesn't stall
-                    callback();
+                    window.location.href = '/';
                 }
-            };
-            poll.onerror = () => callback(); // on network error, proceed anyway
-            poll.send();
+            }
         }
 
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.uuid && (data.status === 'completed' || data.status === 'error')) {
+                    if (data.status === 'error') {
+                        processingErrors++;
+                    }
+                    processedCount++;
+                    checkAllDone();
+                }
+            } catch (err) {
+                console.error('Error parsing SSE event:', err);
+            }
+        };
+
+        eventSource.onerror = (err) => {
+            console.error('EventSource connection error, attempting to reconnect...', err);
+        };
+
         // Progress state:
-        //   uploadedCount   — number of files whose request body has been fully sent
-        //   currentFilePct  — upload fraction (0–1) of the file currently in flight
-        //   processedCount  — number of files whose thumbnail is confirmed on disk
+        //   totalQueueBytes — sum of all file sizes in the queue
+        //   uploadedBytes   — sum of sizes for fully uploaded files
+        //   currentFileUploadedBytes — bytes sent for the file currently in flight
+        //   processedCount  — number of files processed
         //
-        // Bar = (uploadedCount + currentFilePct) / N × 100.
-        // Represents 100% honest, strictly monotonic upload progress.
-        let uploadedCount = 0;
-        let currentFilePct = 0;
+        // Represents 100% honest, strictly monotonic byte-based upload progress.
+        let totalQueueBytes = 0;
+        let uploadedBytes = 0;
+        let currentFileUploadedBytes = 0;
         let processedCount = 0;
 
         function updateUploadBar() {
+            if (totalQueueBytes === 0) return;
             const pct = Math.min(100, Math.round(
-                ((uploadedCount + currentFilePct) / queuedFiles.length) * 100
+                ((uploadedBytes + currentFileUploadedBytes) / totalQueueBytes) * 100
             ));
             progressFill.style.width = pct + '%';
             progressPercent.textContent = pct + '%';
             if (pct >= 100) {
-                progressStatus.textContent = 'Saving photos...';
-            }
-        }
-
-        function onFileFullyDone() {
-            processedCount++;
-            if (processedCount === queuedFiles.length) {
-                // All thumbnails confirmed — redirect immediately to gallery
-                window.location.href = '/';
+                progressStatus.textContent = 'Finishing upload...';
             }
         }
 
@@ -288,10 +295,10 @@
             activeXhr = xhr;
             xhr.open('POST', '/upload', true);
 
-            // Progress tracking — track this file's byte fraction for the upload bar
+            // Progress tracking — track this file's uploaded bytes for the upload bar
             xhr.upload.addEventListener('progress', (e) => {
                 if (e.lengthComputable) {
-                    currentFilePct = e.loaded / e.total;
+                    currentFileUploadedBytes = e.loaded;
                     updateUploadBar();
                 }
             });
@@ -299,8 +306,8 @@
             // Body fully sent — pipeline: start next file, advance the upload counter
             xhr.upload.addEventListener('load', () => {
                 URL.revokeObjectURL(previewUrl);
-                uploadedCount++;
-                currentFilePct = 0;
+                uploadedBytes += activeFile.size;
+                currentFileUploadedBytes = 0;
                 updateUploadBar();
                 uploadNextFile(index + 1);
             });
@@ -324,11 +331,13 @@
                     ext = resp.ext;
                 } catch (e) { }
 
-                if (uuid && ext) {
-                    pollThumbnail(uuid, ext, 0, onFileFullyDone);
-                } else {
-                    onFileFullyDone();
+                if (!uuid || !ext) {
+                    // If server didn't return UUID, treat as processed (failed)
+                    processingErrors++;
+                    processedCount++;
+                    checkAllDone();
                 }
+                // If we got UUID, we just wait for SSE to fire.
             });
 
             // Network error
@@ -354,8 +363,9 @@
             stagedList.style.display = 'none';
 
             // Reset all counters for this upload session
-            uploadedCount = 0;
-            currentFilePct = 0;
+            totalQueueBytes = queuedFiles.reduce((sum, f) => sum + f.size, 0);
+            uploadedBytes = 0;
+            currentFileUploadedBytes = 0;
             processedCount = 0;
             progressFill.style.width = '0%';
             progressPercent.textContent = '0%';
