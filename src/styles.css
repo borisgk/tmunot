@@ -842,3 +842,27 @@ body {
     text-align: center;
     margin-top: 0.25rem;
 }
+
+/* --- Individual Item Progress --- */
+.item-progress-container {
+    margin-top: 0.5rem;
+    width: 100%;
+}
+.item-progress-track {
+    background-color: var(--md-sys-color-surface-container-high);
+    height: 4px;
+    border-radius: 2px;
+    overflow: hidden;
+}
+.item-progress-fill {
+    background-color: var(--md-sys-color-primary);
+    height: 100%;
+    width: 0%;
+    transition: width 0.1s linear, background-color 0.3s;
+}
+.staged-item.processing {
+    opacity: 0.7;
+}
+.staged-item.done {
+    display: none;
+}

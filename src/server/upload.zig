@@ -202,6 +202,13 @@ pub fn handleUpload(
     // Push the job to the background processing queue
     processor.pushJob(job);
 
+    // Wait for the background thumbnail processing to complete
+    // This allows the browser's single XHR POST to act as both the upload AND processing progress,
+    // unifying signaling without requiring SSE.
+    while (processor.isJobActive(uuid)) {
+        try io.sleep(std.Io.Duration.fromMilliseconds(250), .awake);
+    }
+
     const response_body = try std.fmt.allocPrint(req_alloc,
         "{{\"status\":\"success\",\"uuid\":\"{s}\",\"ext\":\"{s}\"}}",
         .{ uuid, ext_clean },

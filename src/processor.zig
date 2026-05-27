@@ -131,6 +131,18 @@ pub fn getActiveJob(uuid: []const u8, allocator: std.mem.Allocator) !?ActiveJob 
     return null;
 }
 
+pub fn isJobActive(uuid: []const u8) bool {
+    while (!registry_mutex.tryLock()) {
+        std.atomic.spinLoopHint();
+    }
+    defer registry_mutex.unlock();
+
+    if (active_jobs) |map| {
+        return map.contains(uuid);
+    }
+    return false;
+}
+
 // SSE Connection state
 pub const SseClient = struct {
     stream: std.Io.net.Stream,
