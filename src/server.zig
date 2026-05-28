@@ -2,6 +2,7 @@ const std = @import("std");
 const auth = @import("auth.zig");
 const config_mod = @import("config.zig");
 const processor = @import("processor.zig");
+const db = @import("db.zig");
 
 const server_gallery = @import("server/gallery.zig");
 const server_auth = @import("server/auth.zig");
@@ -242,6 +243,39 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
             },
         });
         return;
+    }
+
+    if (req.head.method == .POST and std.mem.startsWith(u8, target, "/delete/")) {
+        if (!is_authenticated or username == null) {
+            try req.respond("Unauthorized", .{ .status = .unauthorized });
+            return;
+        }
+        const photo_uuid = target[8..];
+
+        const loc = try db.getPhotoLocation(photo_uuid, req_alloc);
+        if (loc) |l| {
+            if (std.mem.eql(u8, l.username, username.?)) {
+                const orig_path = try std.fmt.allocPrint(req_alloc, "photos/{s}/originals/{s}/{s}/{s}.{s}", .{ l.username, l.year, l.month, photo_uuid, l.extension });
+                const prev_path = try std.fmt.allocPrint(req_alloc, "photos/{s}/previews/{s}/{s}/{s}.{s}", .{ l.username, l.year, l.month, photo_uuid, l.extension });
+                const thumb_path = try std.fmt.allocPrint(req_alloc, "photos/{s}/thumbnails/{s}/{s}/{s}.{s}", .{ l.username, l.year, l.month, photo_uuid, l.extension });
+
+                const cwd = std.Io.Dir.cwd();
+                cwd.deleteFile(io, orig_path) catch |err| std.debug.print("Failed to delete orig: {}\n", .{err});
+                cwd.deleteFile(io, prev_path) catch |err| std.debug.print("Failed to delete prev: {}\n", .{err});
+                cwd.deleteFile(io, thumb_path) catch |err| std.debug.print("Failed to delete thumb: {}\n", .{err});
+
+                try db.deletePhoto(photo_uuid);
+
+                try req.respond("Deleted", .{});
+                return;
+            } else {
+                try req.respond("Forbidden", .{ .status = .forbidden });
+                return;
+            }
+        } else {
+            try req.respond("Not Found", .{ .status = .not_found });
+            return;
+        }
     }
 
     try req.respond("Not Found", .{ .status = .not_found });

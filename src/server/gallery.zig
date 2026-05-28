@@ -222,12 +222,15 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8) ![]u8 {
 
         // Using flat list flexbox with ratio-based flex-basis for automatic responsive row packing
         const card = try std.fmt.allocPrint(alloc,
-            \\        <div class="card" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h)); aspect-ratio:{d:.4};" onclick="openLightbox('/previews/{s}.{s}')">
+            \\        <div class="card" data-uuid="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h)); aspect-ratio:{d:.4};" onclick="openLightbox('/previews/{s}.{s}')">
+            \\            <button class="card-overflow-btn" aria-label="More options" onclick="toggleMenu(event, '{s}', '{s}')">
+            \\                <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+            \\            </button>
             \\            <img src="/thumbnails/{s}.{s}" alt="{s}"{s}{s}>
             \\            <p>{s}</p>
             \\        </div>
             \\
-        , .{ ratio, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename });
+        , .{ r.uuid, ratio, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename });
         try html.appendSlice(alloc, card);
     }
 

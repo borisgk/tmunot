@@ -620,3 +620,28 @@ pub fn insertPhotoExif(record: PhotoExifRecord) !void {
     }
 }
 
+pub fn deletePhoto(uuid: []const u8) !void {
+    const io = global_io orelse return error.DbNotInitialized;
+    db_mutex.lockUncancelable(io);
+    defer db_mutex.unlock(io);
+
+    const db = db_conn orelse return error.DbNotInitialized;
+
+    const delete_sql = "DELETE FROM photos WHERE uuid = ?;";
+
+    var stmt: ?*sqlite3_stmt = null;
+    if (sqlite3_prepare_v2(db, delete_sql, -1, &stmt, null) != SQLITE_OK) {
+        return error.SqlitePrepareFailed;
+    }
+    defer _ = sqlite3_finalize(stmt);
+
+    _ = sqlite3_bind_text(stmt, 1, uuid.ptr, @intCast(uuid.len), SQLITE_TRANSIENT);
+
+    const rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        std.debug.print("Failed to delete photo: {s}\n", .{sqlite3_errmsg(db)});
+        return error.SqliteDeleteFailed;
+    }
+}
+
+
