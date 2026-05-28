@@ -177,6 +177,7 @@ pub fn extractExifFromBuffer(allocator: std.mem.Allocator, buffer: []const u8) !
     var shooting_date: ?[]const u8 = null;
     var width: ?i32 = null;
     var height: ?i32 = null;
+    var swap_dimensions = false;
 
     var ifd: c_int = 0;
     while (ifd < 5) : (ifd += 1) {
@@ -209,11 +210,21 @@ pub fn extractExifFromBuffer(allocator: std.mem.Allocator, buffer: []const u8) !
                             width = std.fmt.parseInt(i32, val_str, 10) catch null;
                         } else if (std.mem.eql(u8, tag_name, "PixelYDimension") or (height == null and std.mem.eql(u8, tag_name, "ImageLength"))) {
                             height = std.fmt.parseInt(i32, val_str, 10) catch null;
+                        } else if (std.mem.eql(u8, tag_name, "Orientation")) {
+                            if (std.mem.startsWith(u8, val_str, "Left-") or std.mem.startsWith(u8, val_str, "Right-")) {
+                                swap_dimensions = true;
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    if (swap_dimensions) {
+        const temp = width;
+        width = height;
+        height = temp;
     }
 
     return ExifMetadata{
