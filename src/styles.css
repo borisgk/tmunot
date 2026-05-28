@@ -176,7 +176,8 @@ body {
     pointer-events: none;
 }
 
-.card:hover::after {
+.card:hover::after,
+.card.menu-open::after {
     opacity: 0.08;
 }
 
@@ -191,7 +192,8 @@ body {
     pointer-events: none;
 }
 
-.card:hover::before {
+.card:hover::before,
+.card.menu-open::before {
     opacity: 1;
 }
 
@@ -225,7 +227,8 @@ body {
     transition: opacity 0.2s;
 }
 
-.card:hover p {
+.card:hover p,
+.card.menu-open p {
     opacity: 1;
 }
 
@@ -478,4 +481,135 @@ body {
     transform: scale(0.98) translateY(0);
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
 }
+
+/* --- M3 Expressive Overflow Button & Menu --- */
+.card-overflow-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--md-sys-shape-corner-full);
+    border: none;
+    background: rgba(0, 0, 0, 0.45);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0; /* Hover only */
+    transition: opacity 0.25s var(--md-sys-motion-easing-standard), 
+                background-color 0.2s var(--md-sys-motion-easing-standard), 
+                transform 0.2s var(--md-sys-motion-easing-standard);
+    z-index: 15;
+}
+
+.card-overflow-btn svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+}
+
+/* Show overflow button on hover of the parent card */
+.card:hover .card-overflow-btn,
+.card.menu-open .card-overflow-btn {
+    opacity: 1;
+}
+
+.card-overflow-btn:hover {
+    background: rgba(0, 0, 0, 0.75);
+    transform: scale(1.08);
+}
+
+.card-overflow-btn:active {
+    transform: scale(0.92);
+}
+
+/* Floating Menu Container */
+.md-menu {
+    position: fixed;
+    z-index: 1100;
+    background: var(--md-sys-color-surface-container-high);
+    border-radius: var(--md-sys-shape-corner-small); /* 8px corner */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.1);
+    min-width: 140px;
+    padding: 6px 0;
+    opacity: 0;
+    transform: scale(0.92);
+    transform-origin: top right;
+    transition: opacity 150ms var(--md-sys-motion-easing-standard), 
+                transform 150ms var(--md-sys-motion-easing-standard);
+    pointer-events: none;
+    display: none;
+}
+
+.md-menu.active {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+}
+
+.md-menu-item {
+    width: 100%;
+    border: none;
+    background: transparent;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--md-sys-color-on-surface);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+    position: relative;
+    outline: none;
+}
+
+.md-menu-item::after {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--md-sys-color-on-surface);
+    opacity: 0;
+    transition: opacity 0.2s var(--md-sys-motion-easing-standard);
+    pointer-events: none;
+}
+
+.md-menu-item:hover::after {
+    opacity: 0.08;
+}
+
+.md-menu-item:focus-visible::after {
+    opacity: 0.12;
+}
+
+.md-menu-item:active::after {
+    opacity: 0.16;
+}
+
+.md-menu-item svg {
+    width: 18px;
+    height: 18px;
+    fill: var(--md-sys-color-on-surface-variant);
+}
+
+.md-menu-item span {
+    position: relative;
+    z-index: 2;
+}
+
+/* Danger variant for Delete */
+.md-menu-item--danger {
+    color: var(--md-sys-color-error);
+}
+
+.md-menu-item--danger svg {
+    fill: var(--md-sys-color-error);
+}
+
+.md-menu-item--danger::after {
+    background: var(--md-sys-color-error);
+}
+
 
