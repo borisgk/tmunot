@@ -161,7 +161,7 @@
                     showError(`${errCount} file(s) failed to upload/process properly. Redirecting...`);
                     setTimeout(() => window.location.href = '/', 4000);
                 } else {
-                    window.location.href = '/';
+                    setTimeout(() => window.location.href = '/', 1150); // Wait for the final file's animations to finish
                 }
             }
         }
@@ -232,13 +232,20 @@
                         fileStatus[index].error = true;
                     } else {
                         fileStatus[index].uuid = uuid;
-                        // Snap to 100% and completely destroy the item from the DOM to free memory
+                        // Snap to 100%, wait for progress animation, fade out, then destroy
                         activeFile.ui.progressOverlay.style.width = '100%';
                         activeFile.ui.pctLabel.textContent = '100%';
                         setTimeout(() => {
-                            activeFile.ui.item.remove();
-                            activeFile.ui = null; // drop references
-                        }, 150);
+                            if (activeFile && activeFile.ui && activeFile.ui.item) {
+                                activeFile.ui.item.classList.add('fade-out');
+                                setTimeout(() => {
+                                    if (activeFile && activeFile.ui && activeFile.ui.item) {
+                                        activeFile.ui.item.remove();
+                                        activeFile.ui = null; // drop references
+                                    }
+                                }, 1000); // Wait for fade-out CSS animation
+                            }
+                        }, 150); // Wait for progress bar width animation
                     }
                     checkAllDone();
                 }
