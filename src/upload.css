@@ -85,7 +85,6 @@
 .staged-list {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
     max-height: 300px;
     overflow-y: auto;
     margin-bottom: 2rem;
@@ -99,15 +98,18 @@
     background: var(--md-sys-color-surface-container);
     border-radius: var(--md-sys-shape-corner-large);
     padding: 0.75rem 1rem;
-    animation: slideUp 0.25s var(--md-sys-motion-easing-standard) forwards;
+    animation: cardSlideUp 1s var(--md-sys-motion-easing-standard) forwards;
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     position: relative;
     overflow: hidden;
-    margin-bottom: 0.5rem;
+    margin-bottom: 1.5rem;
     height: 80px;
     min-height: 80px;
     box-sizing: border-box;
     flex-shrink: 0;
+}
+.staged-item:last-child {
+    margin-bottom: 0.5rem;
 }
 
 .staged-item-progress-overlay {
@@ -423,4 +425,31 @@
 }
 .staged-item.done {
     display: none;
+}
+
+.staged-item.fade-out {
+    animation: swipeOutLeft 1s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+}
+
+@keyframes cardSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes swipeOutLeft {
+    100% {
+        transform: translateX(-120%);
+        height: 0;
+        min-height: 0;
+        margin-bottom: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        border-width: 0;
+    }
 }
