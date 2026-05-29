@@ -141,7 +141,7 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
     return false;
 }
 
-pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8) ![]u8 {
+pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail_height: i32) ![]u8 {
     // Use a fresh per-request arena for all intermediate allocations so concurrent
     // page loads don't race on the shared auth_ctx.allocator.
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -179,6 +179,13 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8) ![]u8 {
     const photos = try db.getUserPhotos(username, alloc);
 
     try html.appendSlice(alloc, part1);
+
+    // Inject dynamic thumbnail height override in <head>
+    const dynamic_style = try std.fmt.allocPrint(alloc,
+        "<style>:root {{ --target-h: {d}px; }}</style>\n",
+        .{thumbnail_height}
+    );
+    try html.appendSlice(alloc, dynamic_style);
 
     // Dynamic LCP Preload in HTML Head: If there are photos, preload the first thumbnail immediately
     if (photos.len > 0) {

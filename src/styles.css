@@ -162,6 +162,7 @@ body {
     position: relative;
     overflow: hidden;
     min-width: 0;
+    max-height: calc(var(--target-h) * 1.114);
     /* flex and aspect-ratio are set via inline style per-card */
 }
 
