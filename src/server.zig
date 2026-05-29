@@ -142,7 +142,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
 
     if (req.head.method == .GET and std.mem.eql(u8, target, "/")) {
         if (is_authenticated) {
-            const html = try server_gallery.generateGalleryHtml(req_alloc, username orelse "admin");
+            const html = try server_gallery.generateGalleryHtml(req_alloc, username orelse "admin", config.gallery_thumbnail_height);
             defer std.heap.page_allocator.free(html);
             try req.respond(html, .{
                 .extra_headers = &.{
