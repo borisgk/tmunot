@@ -162,8 +162,8 @@ body {
     position: relative;
     overflow: hidden;
     min-width: 0;
-    max-height: calc(var(--target-h) * 1.114);
-    /* flex and aspect-ratio are set via inline style per-card */
+    height: var(--target-h);
+    /* flex is set via inline style per-card */
 }
 
 /* State Layer Overlay */
@@ -612,5 +612,122 @@ body {
 .md-menu-item--danger::after {
     background: var(--md-sys-color-error);
 }
+
+/* --- Select Checkbox --- */
+.card-select-checkbox {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--md-sys-shape-corner-full);
+    background: rgba(0, 0, 0, 0.45);
+    border: 2px solid rgba(255, 255, 255, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0; /* Hidden by default, shown on hover */
+    transition: opacity 0.2s var(--md-sys-motion-easing-standard),
+                background-color 0.2s var(--md-sys-motion-easing-standard),
+                border-color 0.2s var(--md-sys-motion-easing-standard),
+                transform 0.2s var(--md-sys-motion-easing-standard);
+    z-index: 15;
+}
+
+.card-select-checkbox svg {
+    width: 20px;
+    height: 20px;
+    fill: #ffffff;
+    opacity: 0;
+    transform: scale(0.6);
+    transition: opacity 0.2s var(--md-sys-motion-easing-standard),
+                transform 0.2s var(--md-sys-motion-easing-standard);
+}
+
+/* Show checkbox on card hover */
+.card:hover .card-select-checkbox {
+    opacity: 1;
+}
+
+/* In selection mode, keep all checkboxes visible */
+body.selection-mode .card-select-checkbox {
+    opacity: 1;
+    border-color: rgba(255, 255, 255, 0.6);
+    background: rgba(0, 0, 0, 0.25);
+}
+
+/* Checked state */
+.card.selected .card-select-checkbox {
+    opacity: 1;
+    background: var(--md-sys-color-primary);
+    border-color: var(--md-sys-color-primary);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.card.selected .card-select-checkbox svg {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* Highlight card when selected */
+.card.selected {
+    box-shadow: 0 0 0 3px var(--md-sys-color-primary), 0 8px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* Hover feedback for the checkbox */
+.card-select-checkbox:hover {
+    transform: scale(1.08);
+    background: rgba(0, 0, 0, 0.7);
+}
+
+.card.selected .card-select-checkbox:hover {
+    background: var(--md-sys-color-primary);
+}
+
+/* App bar selection mode transitions */
+.md-top-app-bar.selection-mode {
+    background: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    border-bottom-color: var(--md-sys-color-primary);
+}
+
+.md-top-app-bar.selection-mode .md-top-app-bar__title {
+    color: var(--md-sys-color-on-primary-container);
+    font-weight: 700;
+}
+
+/* M3 Icon Button for Selection Actions */
+.md-selection-icon-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--md-sys-shape-corner-full);
+    border: none;
+    background: transparent;
+    color: var(--md-sys-color-on-primary-container);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    margin-left: 8px;
+    transition: background-color 0.2s var(--md-sys-motion-easing-standard), 
+                transform 0.2s var(--md-sys-motion-easing-standard);
+}
+
+.md-selection-icon-btn svg {
+    width: 24px;
+    height: 24px;
+    fill: currentColor;
+}
+
+.md-selection-icon-btn:hover {
+    background: rgba(0, 0, 0, 0.08);
+    transform: scale(1.05);
+}
+
+.md-selection-icon-btn:active {
+    transform: scale(0.95);
+}
+
 
 
