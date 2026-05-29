@@ -5,6 +5,7 @@ const db = @import("db.zig");
 const exif = @import("exif.zig");
 
 pub extern "c" fn usleep(useconds: c_uint) c_int;
+extern "c" fn rename(old: [*c]const u8, new: [*c]const u8) c_int;
 
 pub const FileJob = struct {
     allocator: std.mem.Allocator,
@@ -364,30 +365,34 @@ fn processJob(job: *FileJob) void {
     };
     defer job.allocator.free(orig_path);
 
-    // Read the original file into memory temporarily to extract EXIF
-    const cwd = std.Io.Dir.cwd();
-    var orig_file = cwd.openFile(io, orig_path, .{}) catch |err| {
-        std.debug.print("Failed to open original file for metadata: {}\n", .{err});
-        return;
-    };
-    defer orig_file.close(io);
+    // Read the original file into memory temporarily to extract EXIF in a closed scope
+    const file_buf = blk: {
+        const cwd = std.Io.Dir.cwd();
+        var orig_file = cwd.openFile(io, orig_path, .{}) catch |err| {
+            std.debug.print("Failed to open original file for metadata: {}\n", .{err});
+            return;
+        };
+        defer orig_file.close(io);
 
-    const file_size = (orig_file.stat(io) catch |err| {
-        std.debug.print("Failed to stat original file: {}\n", .{err});
-        return;
-    }).size;
+        const file_size = (orig_file.stat(io) catch |err| {
+            std.debug.print("Failed to stat original file: {}\n", .{err});
+            return;
+        }).size;
 
-    const file_buf = job.allocator.alloc(u8, @intCast(file_size)) catch |err| {
-        std.debug.print("Failed to allocate file buffer: {}\n", .{err});
-        return;
+        const file_buf = job.allocator.alloc(u8, @intCast(file_size)) catch |err| {
+            std.debug.print("Failed to allocate file buffer: {}\n", .{err});
+            return;
+        };
+        errdefer job.allocator.free(file_buf);
+
+        var file_reader = orig_file.reader(io, &.{});
+        file_reader.interface.readSliceAll(file_buf) catch |err| {
+            std.debug.print("Failed to read original file contents: {}\n", .{err});
+            return;
+        };
+        break :blk file_buf;
     };
     defer job.allocator.free(file_buf);
-
-    var file_reader = orig_file.reader(io, &.{});
-    file_reader.interface.readSliceAll(file_buf) catch |err| {
-        std.debug.print("Failed to read original file contents: {}\n", .{err});
-        return;
-    };
 
     // Extract EXIF data from RAM buffer
     const metadata = exif.extractExifFromBuffer(job.allocator, file_buf) catch |err| {
@@ -395,6 +400,76 @@ fn processJob(job: *FileJob) void {
         return;
     };
     defer if (metadata.shooting_date) |sd| job.allocator.free(sd);
+
+    // If a shooting date exists, use it to organize folder paths and DB entries (Year/Month)
+    if (metadata.shooting_date) |sd| {
+        if (sd.len >= 10) {
+            const shooting_year = sd[0..4];
+            const shooting_month = sd[5..7];
+            const shooting_day = sd[8..10];
+
+            // Only move if it differs from the upload date
+            if (!std.mem.eql(u8, shooting_year, job.year) or !std.mem.eql(u8, shooting_month, job.month) or !std.mem.eql(u8, shooting_day, job.day)) {
+                // Construct new originals directory path
+                const new_orig_dir = std.fmt.allocPrint(job.allocator, "photos/{s}/originals/{s}/{s}", .{ job.username, shooting_year, shooting_month }) catch |err| {
+                    std.debug.print("Failed to format new original dir: {}\n", .{err});
+                    return;
+                };
+                defer job.allocator.free(new_orig_dir);
+
+                // Create the target folder recursively
+                makeDirPathSync(job.allocator, new_orig_dir) catch |err| {
+                    std.debug.print("Failed to create folder '{s}': {}\n", .{ new_orig_dir, err });
+                    return;
+                };
+
+                // New original path
+                const new_orig_path = std.fmt.allocPrint(job.allocator, "{s}/{s}.{s}", .{ new_orig_dir, job.uuid, job.extension }) catch |err| {
+                    std.debug.print("Failed to format new original path: {}\n", .{err});
+                    return;
+                };
+                defer job.allocator.free(new_orig_path);
+
+                // Move file using standard C rename
+                const old_path_c = std.fmt.allocPrintSentinel(job.allocator, "{s}", .{orig_path}, 0) catch |err| {
+                    std.debug.print("Failed to format sentinel old path: {}\n", .{err});
+                    return;
+                };
+                defer job.allocator.free(old_path_c);
+
+                const new_path_c = std.fmt.allocPrintSentinel(job.allocator, "{s}", .{new_orig_path}, 0) catch |err| {
+                    std.debug.print("Failed to format sentinel new path: {}\n", .{err});
+                    return;
+                };
+                defer job.allocator.free(new_path_c);
+
+                if (rename(old_path_c.ptr, new_path_c.ptr) != 0) {
+                    std.debug.print("Failed to rename original photo to shooting date path using C rename\n", .{});
+                    return;
+                }
+
+                std.debug.print("Moved original from upload date path '{s}' to shooting date path '{s}'\n", .{ orig_path, new_orig_path });
+
+                // Update job properties in memory so subsequent preview/thumbnail generation uses shooting date
+                job.allocator.free(job.year);
+                job.allocator.free(job.month);
+                job.allocator.free(job.day);
+
+                job.year = job.allocator.dupe(u8, shooting_year) catch |err| {
+                    std.debug.print("Failed to duplicate shooting year: {}\n", .{err});
+                    return;
+                };
+                job.month = job.allocator.dupe(u8, shooting_month) catch |err| {
+                    std.debug.print("Failed to duplicate shooting month: {}\n", .{err});
+                    return;
+                };
+                job.day = job.allocator.dupe(u8, shooting_day) catch |err| {
+                    std.debug.print("Failed to duplicate shooting day: {}\n", .{err});
+                    return;
+                };
+            }
+        }
+    }
 
     // Determine dimensions in RAM
     var width = metadata.width;

@@ -199,6 +199,69 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
     
     try html.appendSlice(alloc, part2);
 
+    // Collect unique years and months for dynamic filtering dropdowns
+    var years_list = std.ArrayList([]const u8).empty;
+    defer years_list.deinit(alloc);
+    var months_list = std.ArrayList([]const u8).empty;
+    defer months_list.deinit(alloc);
+
+    for (photos) |p| {
+        const ym = getDisplayYearMonth(p);
+        var year_exists = false;
+        for (years_list.items) |y| {
+            if (std.mem.eql(u8, y, ym.year)) {
+                year_exists = true;
+                break;
+            }
+        }
+        if (!year_exists) {
+            try years_list.append(alloc, try alloc.dupe(u8, ym.year));
+        }
+
+        var month_exists = false;
+        for (months_list.items) |m| {
+            if (std.mem.eql(u8, m, ym.month)) {
+                month_exists = true;
+                break;
+            }
+        }
+        if (!month_exists) {
+            try months_list.append(alloc, try alloc.dupe(u8, ym.month));
+        }
+    }
+
+    std.mem.sort([]const u8, years_list.items, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.order(u8, a, b) == .gt;
+        }
+    }.lessThan);
+
+    std.mem.sort([]const u8, months_list.items, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.order(u8, a, b) == .lt;
+        }
+    }.lessThan);
+
+    // Build filter dropdowns HTML
+    var filter_html = std.ArrayList(u8).empty;
+    
+    // Year Select
+    try filter_html.appendSlice(alloc, "<div class=\"filter-select-container\"><select id=\"filter-year\" class=\"md-filter-select\" onchange=\"filterGallery()\" aria-label=\"Filter by Year\"><option value=\"all\">All Years</option>");
+    for (years_list.items) |y| {
+        const option = try std.fmt.allocPrint(alloc, "<option value=\"{s}\">{s}</option>", .{ y, y });
+        try filter_html.appendSlice(alloc, option);
+    }
+    try filter_html.appendSlice(alloc, "</select></div>\n");
+
+    // Month Select
+    try filter_html.appendSlice(alloc, "<div class=\"filter-select-container\"><select id=\"filter-month\" class=\"md-filter-select\" onchange=\"filterGallery()\" aria-label=\"Filter by Month\"><option value=\"all\">All Months</option>");
+    for (months_list.items) |m| {
+        const m_name = getMonthName(m);
+        const option = try std.fmt.allocPrint(alloc, "<option value=\"{s}\">{s}</option>", .{ m, m_name });
+        try filter_html.appendSlice(alloc, option);
+    }
+    try filter_html.appendSlice(alloc, "</select></div>\n");
+
     const logout_html = 
         \\  <form method="POST" action="/logout" style="margin: 0;">
         \\      <button type="submit" class="md-header-logout-icon-btn" title="Logout" aria-label="Logout">
@@ -208,7 +271,21 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
         \\      </button>
         \\  </form>
     ;
+
+    const selection_actions_html =
+        \\  <div id="selection-actions" class="selection-actions-container" style="display: none;">
+        \\      <button class="md-selection-icon-btn" onclick="bulkDownload()" title="Download selected" aria-label="Download selected">
+        \\          <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+        \\      </button>
+        \\      <button class="md-selection-icon-btn" onclick="bulkDelete()" title="Delete selected" aria-label="Delete selected" style="color: var(--md-sys-color-error, #ba1a1a);">
+        \\          <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        \\      </button>
+        \\  </div>
+    ;
+
+    try html.appendSlice(alloc, filter_html.items);
     try html.appendSlice(alloc, logout_html);
+    try html.appendSlice(alloc, selection_actions_html);
 
     try html.appendSlice(alloc, part3);
 
@@ -227,9 +304,10 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
         const loading_attr = if (idx < 12) "" else " loading=\"lazy\"";
         const priority_attr = if (idx == 0) " fetchpriority=\"high\"" else "";
 
+        const ym = getDisplayYearMonth(r);
         // Using flat list flexbox with ratio-based flex-basis for automatic responsive row packing and fixed height for perfect consistency
         const card = try std.fmt.allocPrint(alloc,
-            \\        <div class="card" data-uuid="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h));" onclick="openLightbox('/previews/{s}.{s}')">
+            \\        <div class="card" data-uuid="{s}" data-year="{s}" data-month="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h));" onclick="openLightbox('/previews/{s}.{s}')">
             \\            <button class="card-overflow-btn" aria-label="More options" onclick="toggleMenu(event, '{s}', '{s}')">
             \\                <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
             \\            </button>
@@ -240,7 +318,7 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
             \\            <p>{s}</p>
             \\        </div>
             \\
-        , .{ r.uuid, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename });
+        , .{ r.uuid, ym.year, ym.month, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename });
         try html.appendSlice(alloc, card);
     }
 
@@ -253,4 +331,42 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
     // it with `defer std.heap.page_allocator.free(html)`.
     const result = try std.heap.page_allocator.dupe(u8, html.items);
     return result;
+}
+
+fn getMonthName(month: []const u8) []const u8 {
+    const trimmed = std.mem.trim(u8, month, " ");
+    if (std.mem.eql(u8, trimmed, "01") or std.mem.eql(u8, trimmed, "1")) return "January";
+    if (std.mem.eql(u8, trimmed, "02") or std.mem.eql(u8, trimmed, "2")) return "February";
+    if (std.mem.eql(u8, trimmed, "03") or std.mem.eql(u8, trimmed, "3")) return "March";
+    if (std.mem.eql(u8, trimmed, "04") or std.mem.eql(u8, trimmed, "4")) return "April";
+    if (std.mem.eql(u8, trimmed, "05") or std.mem.eql(u8, trimmed, "5")) return "May";
+    if (std.mem.eql(u8, trimmed, "06") or std.mem.eql(u8, trimmed, "6")) return "June";
+    if (std.mem.eql(u8, trimmed, "07") or std.mem.eql(u8, trimmed, "7")) return "July";
+    if (std.mem.eql(u8, trimmed, "08") or std.mem.eql(u8, trimmed, "8")) return "August";
+    if (std.mem.eql(u8, trimmed, "09") or std.mem.eql(u8, trimmed, "9")) return "September";
+    if (std.mem.eql(u8, trimmed, "10")) return "October";
+    if (std.mem.eql(u8, trimmed, "11")) return "November";
+    if (std.mem.eql(u8, trimmed, "12")) return "December";
+    return month;
+}
+
+fn getDisplayYearMonth(r: db.PhotoRecord) struct { year: []const u8, month: []const u8 } {
+    if (r.shooting_date) |sd| {
+        if (sd.len >= 10) {
+            return .{
+                .year = sd[0..4],
+                .month = sd[5..7],
+            };
+        }
+    }
+    if (r.upload_date.len >= 10) {
+        return .{
+            .year = r.upload_date[0..4],
+            .month = r.upload_date[5..7],
+        };
+    }
+    return .{
+        .year = r.year,
+        .month = r.month,
+    };
 }

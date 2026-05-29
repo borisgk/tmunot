@@ -43,10 +43,10 @@ fn getCurrentDateTime(allocator: std.mem.Allocator) !struct { year: []const u8, 
     const numeric_month = month_day.month.numeric();
     const numeric_day = month_day.day_index + 1;
 
-    const year_str = try std.fmt.allocPrint(allocator, "{0d:4}", .{year_day.year});
-    const month_str = try std.fmt.allocPrint(allocator, "{0d:2}", .{numeric_month});
-    const day_str = try std.fmt.allocPrint(allocator, "{0d:2}", .{numeric_day});
-    const iso_str = try std.fmt.allocPrint(allocator, "{0d:4}-{1d:02}-{2d:02} {3d:02}:{4d:02}:{5d:02}", .{
+    const year_str = try std.fmt.allocPrint(allocator, "{0d:0>4}", .{year_day.year});
+    const month_str = try std.fmt.allocPrint(allocator, "{0d:0>2}", .{numeric_month});
+    const day_str = try std.fmt.allocPrint(allocator, "{0d:0>2}", .{numeric_day});
+    const iso_str = try std.fmt.allocPrint(allocator, "{0d:0>4}-{1d:0>2}-{2d:0>2} {3d:0>2}:{4d:0>2}:{5d:0>2}", .{
         year_day.year,
         numeric_month,
         numeric_day,

@@ -186,14 +186,6 @@ window.addEventListener('resize', closeMenu);
 
 /* --- M3 Expressive Selection Mode Logic --- */
 const selectedPhotos = new Set();
-let originalActionsHTML = '';
-
-document.addEventListener('DOMContentLoaded', () => {
-    const actions = document.getElementById('app-bar-actions');
-    if (actions) {
-        originalActionsHTML = actions.innerHTML;
-    }
-});
 
 function toggleSelect(e) {
     e.preventDefault();
@@ -220,9 +212,9 @@ function updateSelectionUI() {
     const appBar = document.getElementById('app-bar');
     const title = document.getElementById('app-bar-title');
     const left = document.getElementById('app-bar-left');
-    const actions = document.getElementById('app-bar-actions');
+    const selActions = document.getElementById('selection-actions');
     
-    if (!appBar || !title || !left || !actions) return;
+    if (!appBar || !title || !left || !selActions) return;
     
     if (selectedPhotos.size > 0) {
         document.body.classList.add('selection-mode');
@@ -236,21 +228,14 @@ function updateSelectionUI() {
             </button>
         `;
         
-        actions.innerHTML = `
-            <button class="md-selection-icon-btn" onclick="bulkDownload()" title="Download selected" aria-label="Download selected">
-                <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
-            </button>
-            <button class="md-selection-icon-btn" onclick="bulkDelete()" title="Delete selected" aria-label="Delete selected" style="color: var(--md-sys-color-error, #ba1a1a);">
-                <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-            </button>
-        `;
+        selActions.style.display = 'flex';
     } else {
         document.body.classList.remove('selection-mode');
         appBar.classList.remove('selection-mode');
         
         title.textContent = 'Image Gallery';
         left.innerHTML = '';
-        actions.innerHTML = originalActionsHTML;
+        selActions.style.display = 'none';
     }
 }
 
@@ -317,5 +302,30 @@ function bulkDelete() {
             updateSelectionUI();
         });
     }
+}
+
+/* --- M3 Expressive Gallery Filtering Logic --- */
+function filterGallery() {
+    const yearSelect = document.getElementById('filter-year');
+    const monthSelect = document.getElementById('filter-month');
+    if (!yearSelect || !monthSelect) return;
+    
+    const activeYear = yearSelect.value.trim();
+    const activeMonth = monthSelect.value.trim();
+    
+    const cards = document.querySelectorAll('.card');
+    cards.forEach(card => {
+        const cardYear = (card.dataset.year || '').trim();
+        const cardMonth = (card.dataset.month || '').trim();
+        
+        const matchYear = activeYear === 'all' || cardYear === activeYear;
+        const matchMonth = activeMonth === 'all' || cardMonth === activeMonth;
+        
+        if (matchYear && matchMonth) {
+            card.style.display = '';
+        } else {
+            card.style.display = 'none';
+        }
+    });
 }
 
