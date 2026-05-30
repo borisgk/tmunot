@@ -4,7 +4,6 @@ const logger = @import("logger.zig");
 const db = @import("db.zig");
 const exif = @import("exif.zig");
 
-pub extern "c" fn usleep(useconds: c_uint) c_int;
 extern "c" fn rename(old: [*c]const u8, new: [*c]const u8) c_int;
 extern "c" fn unlink(pathname: [*c]const u8) c_int;
 
