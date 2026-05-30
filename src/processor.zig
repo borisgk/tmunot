@@ -357,7 +357,7 @@ fn processJob(job: *FileJob) void {
     const io = global_io orelse return;
 
     // Formulate chronological original path: photos/<username>/originals/<year>/<month>/<uuid>.<ext>
-    const orig_path = std.fmt.allocPrint(job.allocator, "photos/{s}/originals/{s}/{s}/{s}.{s}", .{
+    var orig_path = std.fmt.allocPrint(job.allocator, "photos/{s}/originals/{s}/{s}/{s}.{s}", .{
         job.username, job.year, job.month, job.uuid, job.extension
     }) catch |err| {
         std.debug.print("Failed to format original path for DB: {}\n", .{err});
@@ -465,6 +465,13 @@ fn processJob(job: *FileJob) void {
                 };
                 job.day = job.allocator.dupe(u8, shooting_day) catch |err| {
                     std.debug.print("Failed to duplicate shooting day: {}\n", .{err});
+                    return;
+                };
+
+                // Update orig_path in memory to point to the new shooting date original folder path
+                job.allocator.free(orig_path);
+                orig_path = job.allocator.dupe(u8, new_orig_path) catch |err| {
+                    std.debug.print("Failed to duplicate new original path: {}\n", .{err});
                     return;
                 };
             }
