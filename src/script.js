@@ -307,21 +307,16 @@ function bulkDelete() {
 /* --- M3 Expressive Gallery Filtering Logic --- */
 function filterGallery() {
     const yearSelect = document.getElementById('filter-year');
-    const monthSelect = document.getElementById('filter-month');
-    if (!yearSelect || !monthSelect) return;
+    if (!yearSelect) return;
     
     const activeYear = yearSelect.value.trim();
-    const activeMonth = monthSelect.value.trim();
     
     const cards = document.querySelectorAll('.card');
     cards.forEach(card => {
         const cardYear = (card.dataset.year || '').trim();
-        const cardMonth = (card.dataset.month || '').trim();
-        
         const matchYear = activeYear === 'all' || cardYear === activeYear;
-        const matchMonth = activeMonth === 'all' || cardMonth === activeMonth;
         
-        if (matchYear && matchMonth) {
+        if (matchYear) {
             card.style.display = '';
         } else {
             card.style.display = 'none';
