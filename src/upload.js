@@ -49,8 +49,8 @@
         function handleFiles(files) {
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
-                if (!file.type.startsWith('image/')) {
-                    showError('Only image files are allowed.');
+                if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+                    showError('Only image and video files are allowed.');
                     continue;
                 }
 
@@ -189,7 +189,7 @@
             const activeFile = queuedFiles[index];
             
             // Show the actual image thumbnail while uploading
-            if (activeFile.size <= 50 * 1024 * 1024) {
+            if (activeFile.size <= 50 * 1024 * 1024 && activeFile.type.startsWith('image/')) {
                 activeFile.ui.img.src = URL.createObjectURL(activeFile);
                 activeFile.ui.img.onload = () => URL.revokeObjectURL(activeFile.ui.img.src);
             }

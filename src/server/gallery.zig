@@ -7,7 +7,7 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
     _ = allocator; // kept for API compatibility; we use a local arena below
     const target = req.head.target;
 
-    if (std.mem.startsWith(u8, target, "/thumbnails/") or std.mem.startsWith(u8, target, "/previews/")) {
+    if (std.mem.startsWith(u8, target, "/thumbnails/") or std.mem.startsWith(u8, target, "/previews/") or std.mem.startsWith(u8, target, "/hover_previews/")) {
         // Use a fresh per-request arena so concurrent requests don't share the same allocator
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
@@ -25,6 +25,9 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
         if (std.mem.startsWith(u8, decoded_target, "/thumbnails/")) {
             type_segment = "thumbnails";
             suffix = decoded_target[12..];
+        } else if (std.mem.startsWith(u8, decoded_target, "/hover_previews/")) {
+            type_segment = "hover_previews";
+            suffix = decoded_target[16..];
         } else {
             type_segment = "previews";
             suffix = decoded_target[10..];
@@ -81,13 +84,31 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
         }
 
         // Reconstruct local chronological user path: photos/<username>/<type>/<year>/<month>/<uuid>.<extension>
+        const is_video = std.mem.eql(u8, loc.?.extension, "mp4") or
+                         std.mem.eql(u8, loc.?.extension, "mov") or
+                         std.mem.eql(u8, loc.?.extension, "m4v") or
+                         std.mem.eql(u8, loc.?.extension, "webm") or
+                         std.mem.eql(u8, loc.?.extension, "avi");
+
+        const type_folder = if (std.mem.eql(u8, type_segment, "previews") and is_video)
+            @as([]const u8, "originals")
+        else
+            type_segment;
+
+        const file_ext = if (std.mem.eql(u8, type_segment, "hover_previews"))
+            @as([]const u8, "mp4")
+        else if (std.mem.eql(u8, type_segment, "thumbnails") and is_video)
+            @as([]const u8, "jpg")
+        else
+            loc.?.extension;
+
         const full_path = try std.fmt.allocPrint(alloc, "photos/{s}/{s}/{s}/{s}/{s}.{s}", .{
             loc.?.username,
-            type_segment,
+            type_folder,
             loc.?.year,
             loc.?.month,
             uuid,
-            loc.?.extension,
+            file_ext,
         });
 
         var file = std.Io.Dir.cwd().openFile(io, full_path, .{}) catch {
@@ -115,9 +136,21 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
         };
 
         const is_png = std.mem.eql(u8, loc.?.extension, "png");
+        const mime_type = if (std.mem.eql(u8, type_segment, "hover_previews"))
+            @as([]const u8, "video/mp4")
+        else if (std.mem.eql(u8, type_segment, "previews") and is_video) blk: {
+            if (std.mem.eql(u8, loc.?.extension, "mov")) break :blk @as([]const u8, "video/quicktime");
+            if (std.mem.eql(u8, loc.?.extension, "webm")) break :blk @as([]const u8, "video/webm");
+            if (std.mem.eql(u8, loc.?.extension, "avi")) break :blk @as([]const u8, "video/x-msvideo");
+            break :blk @as([]const u8, "video/mp4");
+        } else if (is_png)
+            @as([]const u8, "image/png")
+        else
+            @as([]const u8, "image/jpeg");
+
         try req.respond(file_contents, .{
             .extra_headers = &.{
-                .{ .name = "Content-Type", .value = if (is_png) @as([]const u8, "image/png") else @as([]const u8, "image/jpeg") },
+                .{ .name = "Content-Type", .value = mime_type },
                 .{ .name = "Cache-Control", .value = "public, max-age=31536000, immutable" },
                 .{ .name = "ETag", .value = etag_val },
             },
@@ -277,20 +310,44 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
         const priority_attr = if (idx == 0) " fetchpriority=\"high\"" else "";
 
         const ym = getDisplayYearMonth(r);
+        const is_video = std.mem.eql(u8, r.extension, "mp4") or
+                         std.mem.eql(u8, r.extension, "mov") or
+                         std.mem.eql(u8, r.extension, "m4v") or
+                         std.mem.eql(u8, r.extension, "webm") or
+                         std.mem.eql(u8, r.extension, "avi");
+
         // Using flat list flexbox with ratio-based flex-basis for automatic responsive row packing and fixed height for perfect consistency
-        const card = try std.fmt.allocPrint(alloc,
-            \\        <div class="card" data-uuid="{s}" data-year="{s}" data-month="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h));" onclick="openLightbox('/previews/{s}.{s}')">
-            \\            <button class="card-overflow-btn" aria-label="More options" onclick="toggleMenu(event, '{s}', '{s}')">
-            \\                <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
-            \\            </button>
-            \\            <div class="card-select-checkbox" onclick="toggleSelect(event)">
-            \\                <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
-            \\            </div>
-            \\            <img src="/thumbnails/{s}.{s}" alt="{s}"{s}{s}>
-            \\            <p>{s}</p>
-            \\        </div>
-            \\
-        , .{ r.uuid, ym.year, ym.month, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename });
+        const card = if (is_video)
+            try std.fmt.allocPrint(alloc,
+                \\        <div class="card video-card" data-uuid="{s}" data-year="{s}" data-month="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h));" onclick="openLightbox('/previews/{s}.{s}')">
+                \\            <button class="card-overflow-btn" aria-label="More options" onclick="toggleMenu(event, '{s}', '{s}')">
+                \\                <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+                \\            </button>
+                \\            <div class="card-select-checkbox" onclick="toggleSelect(event)">
+                \\                <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+                \\            </div>
+                \\            <div class="card-video-play-overlay">
+                \\                <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                \\            </div>
+                \\            <img src="/thumbnails/{s}.{s}" alt="{s}"{s}{s}>
+                \\            <p>{s}</p>
+                \\        </div>
+                \\
+            , .{ r.uuid, ym.year, ym.month, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename })
+        else
+            try std.fmt.allocPrint(alloc,
+                \\        <div class="card" data-uuid="{s}" data-year="{s}" data-month="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h));" onclick="openLightbox('/previews/{s}.{s}')">
+                \\            <button class="card-overflow-btn" aria-label="More options" onclick="toggleMenu(event, '{s}', '{s}')">
+                \\                <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+                \\            </button>
+                \\            <div class="card-select-checkbox" onclick="toggleSelect(event)">
+                \\                <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+                \\            </div>
+                \\            <img src="/thumbnails/{s}.{s}" alt="{s}"{s}{s}>
+                \\            <p>{s}</p>
+                \\        </div>
+                \\
+            , .{ r.uuid, ym.year, ym.month, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename });
         try html.appendSlice(alloc, card);
     }
 

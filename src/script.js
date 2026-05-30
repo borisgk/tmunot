@@ -11,7 +11,35 @@ function openLightbox(src) {
     }
     const lightbox = document.getElementById('lightbox');
     const img = document.getElementById('lightbox-img');
-    img.src = src;
+    
+    // Remove any existing video element
+    const existingVideo = document.getElementById('lightbox-video');
+    if (existingVideo) existingVideo.remove();
+
+    const isVideo = src.endsWith('.mp4') || src.endsWith('.mov') || src.endsWith('.m4v') || src.endsWith('.webm') || src.endsWith('.avi');
+    if (isVideo) {
+        img.style.display = 'none';
+        
+        const video = document.createElement('video');
+        video.id = 'lightbox-video';
+        video.src = src;
+        video.controls = true;
+        video.autoplay = true;
+        video.style.maxWidth = '90vw';
+        video.style.maxHeight = '80vh';
+        video.style.borderRadius = '8px';
+        video.style.boxShadow = '0 12px 30px rgba(0,0,0,0.5)';
+        video.style.zIndex = '1001';
+        video.style.outline = 'none';
+        // Prevent clicks on the video from closing the lightbox
+        video.onclick = (e) => e.stopPropagation();
+
+        lightbox.appendChild(video);
+    } else {
+        img.src = src;
+        img.style.display = 'block';
+    }
+    
     lightbox.style.display = 'flex';
     void lightbox.offsetWidth; // Trigger reflow
     lightbox.classList.add('active');
@@ -21,9 +49,17 @@ function closeLightbox(e) {
     if (e.target.id === 'lightbox' || e.target.classList.contains('close-btn')) {
         const lightbox = document.getElementById('lightbox');
         lightbox.classList.remove('active');
+        
+        const video = document.getElementById('lightbox-video');
+        if (video) {
+            video.pause();
+        }
+
         setTimeout(() => {
             lightbox.style.display = 'none';
             document.getElementById('lightbox-img').src = '';
+            const v = document.getElementById('lightbox-video');
+            if (v) v.remove();
         }, 300);
     }
 }
@@ -323,4 +359,55 @@ function filterGallery() {
         }
     });
 }
+
+// Google Photos-style Video Hover Micro-Animation via Event Delegation
+document.addEventListener('DOMContentLoaded', () => {
+    const grid = document.getElementById('gallery-grid');
+    if (!grid) return;
+
+    grid.addEventListener('mouseover', (e) => {
+        const card = e.target.closest('.video-card');
+        if (!card) return;
+        
+        // If already playing, do nothing
+        if (card.querySelector('video')) return;
+
+        const uuid = card.dataset.uuid;
+        if (!uuid) return;
+
+        const video = document.createElement('video');
+        video.src = `/hover_previews/${uuid}.mp4`;
+        video.autoplay = true;
+        video.loop = true;
+        video.muted = true;
+        video.playsInline = true;
+        
+        // Match CSS card video dimensions and styling
+        video.style.position = 'absolute';
+        video.style.top = '0';
+        video.style.left = '0';
+        video.style.width = '100%';
+        video.style.height = '100%';
+        video.style.objectFit = 'cover';
+        video.style.zIndex = '1';
+        video.style.borderRadius = 'inherit';
+        video.style.pointerEvents = 'none'; // prevent blocking mouse events
+
+        card.appendChild(video);
+    });
+
+    grid.addEventListener('mouseout', (e) => {
+        const card = e.target.closest('.video-card');
+        if (!card) return;
+
+        // If leaving the card bounds (relatedTarget is not inside card)
+        if (!card.contains(e.relatedTarget)) {
+            const video = card.querySelector('video');
+            if (video) {
+                video.pause();
+                video.remove();
+            }
+        }
+    });
+});
 
