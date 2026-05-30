@@ -199,11 +199,9 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
     
     try html.appendSlice(alloc, part2);
 
-    // Collect unique years and months for dynamic filtering dropdowns
+    // Collect unique years for dynamic filtering dropdown
     var years_list = std.ArrayList([]const u8).empty;
     defer years_list.deinit(alloc);
-    var months_list = std.ArrayList([]const u8).empty;
-    defer months_list.deinit(alloc);
 
     for (photos) |p| {
         const ym = getDisplayYearMonth(p);
@@ -217,17 +215,6 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
         if (!year_exists) {
             try years_list.append(alloc, try alloc.dupe(u8, ym.year));
         }
-
-        var month_exists = false;
-        for (months_list.items) |m| {
-            if (std.mem.eql(u8, m, ym.month)) {
-                month_exists = true;
-                break;
-            }
-        }
-        if (!month_exists) {
-            try months_list.append(alloc, try alloc.dupe(u8, ym.month));
-        }
     }
 
     std.mem.sort([]const u8, years_list.items, {}, struct {
@@ -236,28 +223,13 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
         }
     }.lessThan);
 
-    std.mem.sort([]const u8, months_list.items, {}, struct {
-        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
-            return std.mem.order(u8, a, b) == .lt;
-        }
-    }.lessThan);
-
-    // Build filter dropdowns HTML
+    // Build filter dropdown HTML
     var filter_html = std.ArrayList(u8).empty;
     
     // Year Select
     try filter_html.appendSlice(alloc, "<div class=\"filter-select-container\"><select id=\"filter-year\" class=\"md-filter-select\" onchange=\"filterGallery()\" aria-label=\"Filter by Year\"><option value=\"all\">All Years</option>");
     for (years_list.items) |y| {
         const option = try std.fmt.allocPrint(alloc, "<option value=\"{s}\">{s}</option>", .{ y, y });
-        try filter_html.appendSlice(alloc, option);
-    }
-    try filter_html.appendSlice(alloc, "</select></div>\n");
-
-    // Month Select
-    try filter_html.appendSlice(alloc, "<div class=\"filter-select-container\"><select id=\"filter-month\" class=\"md-filter-select\" onchange=\"filterGallery()\" aria-label=\"Filter by Month\"><option value=\"all\">All Months</option>");
-    for (months_list.items) |m| {
-        const m_name = getMonthName(m);
-        const option = try std.fmt.allocPrint(alloc, "<option value=\"{s}\">{s}</option>", .{ m, m_name });
         try filter_html.appendSlice(alloc, option);
     }
     try filter_html.appendSlice(alloc, "</select></div>\n");
