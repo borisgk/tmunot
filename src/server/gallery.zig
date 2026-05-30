@@ -122,19 +122,6 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
             return true;
         };
 
-        const file_contents = alloc.alloc(u8, @intCast(stat.size)) catch {
-            try req.respond("Internal Error", .{ .status = .internal_server_error });
-            return true;
-        };
-        // arena will free file_contents on scope exit (after req.respond returns)
-
-        var reader = file.reader(io, &.{});
-        reader.interface.readSliceAll(file_contents) catch |err| {
-            std.debug.print("Failed to read file '{s}': {}\n", .{ full_path, err });
-            try req.respond("Error reading file", .{ .status = .internal_server_error });
-            return true;
-        };
-
         const is_png = std.mem.eql(u8, loc.?.extension, "png");
         const mime_type = if (std.mem.eql(u8, type_segment, "hover_previews"))
             @as([]const u8, "video/mp4")
@@ -148,13 +135,42 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
         else
             @as([]const u8, "image/jpeg");
 
-        try req.respond(file_contents, .{
-            .extra_headers = &.{
-                .{ .name = "Content-Type", .value = mime_type },
-                .{ .name = "Cache-Control", .value = "public, max-age=31536000, immutable" },
-                .{ .name = "ETag", .value = etag_val },
+        var send_buffer: [8192]u8 = undefined;
+        var response = req.respondStreaming(&send_buffer, .{
+            .content_length = stat.size,
+            .respond_options = .{
+                .extra_headers = &.{
+                    .{ .name = "Content-Type", .value = mime_type },
+                    .{ .name = "Cache-Control", .value = "public, max-age=31536000, immutable" },
+                    .{ .name = "ETag", .value = etag_val },
+                },
             },
-        });
+        }) catch {
+            std.debug.print("Failed to initiate streaming response\n", .{});
+            return true;
+        };
+
+        var file_reader = file.reader(io, &.{});
+        var chunk_buf: [65536]u8 = undefined;
+        var bytes_left: u64 = stat.size;
+        
+        while (bytes_left > 0) {
+            const to_read = @min(bytes_left, chunk_buf.len);
+            const read_amt = file_reader.interface.readSliceShort(chunk_buf[0..to_read]) catch |err| {
+                std.debug.print("Failed to read file chunk: {}\n", .{err});
+                break;
+            };
+            if (read_amt == 0) break;
+            response.writer.writeAll(chunk_buf[0..read_amt]) catch |err| {
+                std.debug.print("Failed to write chunk to client: {}\n", .{err});
+                break;
+            };
+            bytes_left -= read_amt;
+        }
+
+        response.end() catch |err| {
+            std.debug.print("Failed to end streaming response: {}\n", .{err});
+        };
         return true;
     }
 
