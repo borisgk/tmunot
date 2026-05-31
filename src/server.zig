@@ -264,7 +264,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
                 cwd.deleteFile(io, prev_path) catch |err| std.debug.print("Failed to delete prev: {}\n", .{err});
                 cwd.deleteFile(io, thumb_path) catch |err| std.debug.print("Failed to delete thumb: {}\n", .{err});
 
-                try db.deletePhoto(photo_uuid);
+                try db.deletePhoto(username.?, photo_uuid);
 
                 try req.respond("Deleted", .{});
                 return;
