@@ -12,6 +12,7 @@ pub const Config = struct {
     quality: i32,
     gallery_thumbnail_height: i32,
     input_directory: []const u8,
+    db_dir: []const u8,
     outputs: []OutputConfig,
 };
 
@@ -53,6 +54,7 @@ pub fn loadConfig(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !C
         .quality = parsed.value.quality,
         .gallery_thumbnail_height = parsed.value.gallery_thumbnail_height,
         .input_directory = try allocator.dupe(u8, parsed.value.input_directory),
+        .db_dir = try allocator.dupe(u8, parsed.value.db_dir),
         .outputs = outputs,
     };
 }

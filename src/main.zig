@@ -27,14 +27,13 @@ pub fn main(init: std.process.Init) !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Initialize DB
-    try db.init(allocator, io, "photos.db");
-    defer db.deinit();
+
 
     // 1. Load config
     const config = try config_mod.loadConfig(allocator, io, "config.json");
     defer allocator.free(config.backend);
     defer allocator.free(config.input_directory);
+    defer allocator.free(config.db_dir);
     defer {
         for (config.outputs) |out| {
             allocator.free(out.name);
@@ -45,6 +44,10 @@ pub fn main(init: std.process.Init) !void {
 
     std.debug.print("Using backend: {s}\n", .{config.backend});
     std.debug.print("Quality: {d}, Outputs: {d}\n", .{ config.quality, config.outputs.len });
+
+    // Initialize DB
+    try db.init(allocator, io, config.db_dir);
+    defer db.deinit();
 
     std.debug.print("Skipping photo conversion on startup for now.\n", .{});
 

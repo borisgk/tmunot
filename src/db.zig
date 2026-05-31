@@ -256,18 +256,31 @@ pub const LocationRecord = struct {
 };
 
 var db_mutex = std.Io.Mutex.init;
-var db_conn: ?*sqlite3 = null;
+var user_dbs: std.StringHashMap(*sqlite3) = undefined;
 var global_io: ?std.Io = null;
+var global_allocator: std.mem.Allocator = undefined;
+var global_db_dir: []const u8 = undefined;
 
-pub fn init(allocator: std.mem.Allocator, io: std.Io, db_path: []const u8) !void {
+pub fn init(allocator: std.mem.Allocator, io: std.Io, db_dir: []const u8) !void {
     db_mutex.lockUncancelable(io);
     defer db_mutex.unlock(io);
 
-    if (db_conn != null) return;
+    if (global_io != null) return;
     global_io = io;
+    global_allocator = allocator;
+    global_db_dir = try allocator.dupe(u8, db_dir);
+    user_dbs = std.StringHashMap(*sqlite3).init(allocator);
 
-    const db_path_c = try std.fmt.allocPrintSentinel(allocator, "{s}", .{db_path}, 0);
-    defer allocator.free(db_path_c);
+    std.Io.Dir.cwd().createDirPath(io, global_db_dir) catch {};
+}
+
+pub fn getDb(username: []const u8) !*sqlite3 {
+    if (user_dbs.get(username)) |db| {
+        return db;
+    }
+
+    const db_path_c = try std.fmt.allocPrintSentinel(global_allocator, "{s}/{s}.db", .{global_db_dir, username}, 0);
+    defer global_allocator.free(db_path_c);
 
     var temp_db: ?*sqlite3 = null;
     const rc = sqlite3_open_v2(
@@ -281,20 +294,18 @@ pub fn init(allocator: std.mem.Allocator, io: std.Io, db_path: []const u8) !void
         if (temp_db) |t| _ = sqlite3_close(t);
         return error.SqliteOpenFailed;
     }
-    db_conn = temp_db;
 
-    // Set WAL mode - REQUIRED by the user "always be using sqlite WAL"
+    const db = temp_db.?;
+
     var err_msg: [*c]u8 = null;
-    const wal_rc = sqlite3_exec(db_conn, "PRAGMA journal_mode=WAL;", null, null, &err_msg);
+    const wal_rc = sqlite3_exec(db, "PRAGMA journal_mode=WAL;", null, null, &err_msg);
     if (wal_rc != SQLITE_OK) {
         std.debug.print("Failed to set WAL mode: {s}\n", .{err_msg});
         if (err_msg) |msg| sqlite3_free(msg);
         return error.SqliteExecFailed;
     }
     if (err_msg) |msg| sqlite3_free(msg);
-    std.debug.print("SQLite WAL mode initialized successfully.\n", .{});
 
-    // Create table and indices
     const create_sql =
         \\CREATE TABLE IF NOT EXISTS photos (
         \\    uuid TEXT PRIMARY KEY,
@@ -324,7 +335,7 @@ pub fn init(allocator: std.mem.Allocator, io: std.Io, db_path: []const u8) !void
         break :blk sql;
     };
 
-    const create_rc = sqlite3_exec(db_conn, create_sql, null, null, &err_msg);
+    const create_rc = sqlite3_exec(db, create_sql, null, null, &err_msg);
     if (create_rc != SQLITE_OK) {
         std.debug.print("Failed to run migrations: {s}\n", .{err_msg});
         if (err_msg) |msg| sqlite3_free(msg);
@@ -332,13 +343,18 @@ pub fn init(allocator: std.mem.Allocator, io: std.Io, db_path: []const u8) !void
     }
     if (err_msg) |msg| sqlite3_free(msg);
 
-    const create_exif_rc = sqlite3_exec(db_conn, create_exif_sql.ptr, null, null, &err_msg);
+    const create_exif_rc = sqlite3_exec(db, create_exif_sql.ptr, null, null, &err_msg);
     if (create_exif_rc != SQLITE_OK) {
         std.debug.print("Failed to run exif migrations: {s}\n", .{err_msg});
         if (err_msg) |msg| sqlite3_free(msg);
         return error.SqliteExecFailed;
     }
     if (err_msg) |msg| sqlite3_free(msg);
+
+    const username_dup = try global_allocator.dupe(u8, username);
+    try user_dbs.put(username_dup, db);
+
+    return db;
 }
 
 pub fn deinit() void {
@@ -346,10 +362,13 @@ pub fn deinit() void {
         db_mutex.lockUncancelable(io);
         defer db_mutex.unlock(io);
 
-        if (db_conn) |db| {
-            _ = sqlite3_close(db);
-            db_conn = null;
+        var it = user_dbs.iterator();
+        while (it.next()) |entry| {
+            _ = sqlite3_close(entry.value_ptr.*);
+            global_allocator.free(entry.key_ptr.*);
         }
+        user_dbs.deinit();
+        global_allocator.free(global_db_dir);
     }
 }
 
@@ -358,7 +377,7 @@ pub fn insertPhoto(record: PhotoRecord) !void {
     db_mutex.lockUncancelable(io);
     defer db_mutex.unlock(io);
 
-    const db = db_conn orelse return error.DbNotInitialized;
+    const db = try getDb(record.username);
 
     const insert_sql =
         \\INSERT INTO photos (uuid, username, filename, extension, year, month, day, shooting_date, upload_date, width, height)
@@ -407,12 +426,12 @@ pub fn insertPhoto(record: PhotoRecord) !void {
     }
 }
 
-pub fn updatePhotoDimensions(uuid: []const u8, width: i32, height: i32) !void {
+pub fn updatePhotoDimensions(username: []const u8, uuid: []const u8, width: i32, height: i32) !void {
     const io = global_io orelse return error.DbNotInitialized;
     db_mutex.lockUncancelable(io);
     defer db_mutex.unlock(io);
 
-    const db = db_conn orelse return error.DbNotInitialized;
+    const db = try getDb(username);
 
     const sql = "UPDATE photos SET width = ?, height = ? WHERE uuid = ?;";
 
@@ -434,53 +453,48 @@ pub fn updatePhotoDimensions(uuid: []const u8, width: i32, height: i32) !void {
 }
 
 pub fn getPhotoLocation(uuid: []const u8, allocator: std.mem.Allocator) !?LocationRecord {
-    var local_db: ?*sqlite3 = null;
-    const rc_open = sqlite3_open_v2(
-        "photos.db",
-        &local_db,
-        SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX,
-        null,
-    );
-    if (rc_open != SQLITE_OK) {
-        if (local_db) |ldb| _ = sqlite3_close(ldb);
-        return error.SqliteOpenFailed;
+    const io = global_io orelse return error.DbNotInitialized;
+    db_mutex.lockUncancelable(io);
+    defer db_mutex.unlock(io);
+
+    var dir = std.Io.Dir.cwd().openDir(io, global_db_dir, .{ .iterate = true }) catch return null;
+    defer dir.close(io);
+
+    var it = dir.iterate();
+    while (try it.next(io)) |entry| {
+        if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".db")) {
+            const username = entry.name[0 .. entry.name.len - 3];
+            const db = getDb(username) catch continue;
+
+            const sql = "SELECT username, year, month, extension FROM photos WHERE uuid = ?;";
+            var stmt: ?*sqlite3_stmt = null;
+            if (sqlite3_prepare_v2(db, sql, -1, &stmt, null) != SQLITE_OK) continue;
+            defer _ = sqlite3_finalize(stmt);
+
+            _ = sqlite3_bind_text(stmt, 1, uuid.ptr, @intCast(uuid.len), SQLITE_TRANSIENT);
+
+            const rc = sqlite3_step(stmt);
+            if (rc == SQLITE_ROW) {
+                const username_c = sqlite3_column_text(stmt, 0);
+                const year_c = sqlite3_column_text(stmt, 1);
+                const month_c = sqlite3_column_text(stmt, 2);
+                const extension_c = sqlite3_column_text(stmt, 3);
+
+                const username_len = sqlite3_column_bytes(stmt, 0);
+                const year_len = sqlite3_column_bytes(stmt, 1);
+                const month_len = sqlite3_column_bytes(stmt, 2);
+                const extension_len = sqlite3_column_bytes(stmt, 3);
+
+                return LocationRecord{
+                    .username = try allocator.dupe(u8, username_c[0..@intCast(username_len)]),
+                    .year = try allocator.dupe(u8, year_c[0..@intCast(year_len)]),
+                    .month = try allocator.dupe(u8, month_c[0..@intCast(month_len)]),
+                    .extension = try allocator.dupe(u8, extension_c[0..@intCast(extension_len)]),
+                };
+            }
+        }
     }
-    defer _ = sqlite3_close(local_db);
-
-    const sql = "SELECT username, year, month, extension FROM photos WHERE uuid = ?;";
-
-    var stmt: ?*sqlite3_stmt = null;
-    if (sqlite3_prepare_v2(local_db, sql, -1, &stmt, null) != SQLITE_OK) {
-        return error.SqlitePrepareFailed;
-    }
-    defer _ = sqlite3_finalize(stmt);
-
-    _ = sqlite3_bind_text(stmt, 1, uuid.ptr, @intCast(uuid.len), SQLITE_TRANSIENT);
-
-    const rc = sqlite3_step(stmt);
-    if (rc == SQLITE_ROW) {
-        const username_c = sqlite3_column_text(stmt, 0);
-        const year_c = sqlite3_column_text(stmt, 1);
-        const month_c = sqlite3_column_text(stmt, 2);
-        const extension_c = sqlite3_column_text(stmt, 3);
-
-        const username_len = sqlite3_column_bytes(stmt, 0);
-        const year_len = sqlite3_column_bytes(stmt, 1);
-        const month_len = sqlite3_column_bytes(stmt, 2);
-        const extension_len = sqlite3_column_bytes(stmt, 3);
-
-        return LocationRecord{
-            .username = try allocator.dupe(u8, username_c[0..@intCast(username_len)]),
-            .year = try allocator.dupe(u8, year_c[0..@intCast(year_len)]),
-            .month = try allocator.dupe(u8, month_c[0..@intCast(month_len)]),
-            .extension = try allocator.dupe(u8, extension_c[0..@intCast(extension_len)]),
-        };
-    } else if (rc == SQLITE_DONE) {
-        return null;
-    } else {
-        std.debug.print("Failed to get photo location: {s}\n", .{sqlite3_errmsg(local_db)});
-        return error.SqliteSelectFailed;
-    }
+    return null;
 }
 
 pub fn getUserPhotos(username: []const u8, allocator: std.mem.Allocator) ![]PhotoRecord {
@@ -488,7 +502,7 @@ pub fn getUserPhotos(username: []const u8, allocator: std.mem.Allocator) ![]Phot
     db_mutex.lockUncancelable(io);
     defer db_mutex.unlock(io);
 
-    const db = db_conn orelse return error.DbNotInitialized;
+    const db = try getDb(username);
 
     const sql = "SELECT uuid, username, filename, extension, year, month, day, shooting_date, upload_date, width, height FROM photos WHERE username = ? ORDER BY COALESCE(shooting_date, upload_date) DESC, upload_date DESC;";
 
@@ -571,13 +585,13 @@ pub fn getUserPhotos(username: []const u8, allocator: std.mem.Allocator) ![]Phot
     return try list.toOwnedSlice(allocator);
 }
 
-pub fn insertPhotoExif(record: PhotoExifRecord) !void {
+pub fn insertPhotoExif(username: []const u8, record: PhotoExifRecord) !void {
     @setEvalBranchQuota(10000);
     const io = global_io orelse return error.DbNotInitialized;
     db_mutex.lockUncancelable(io);
     defer db_mutex.unlock(io);
 
-    const db = db_conn orelse return error.DbNotInitialized;
+    const db = try getDb(username);
 
     const insert_sql = comptime blk: {
         @setEvalBranchQuota(10000);
@@ -620,12 +634,12 @@ pub fn insertPhotoExif(record: PhotoExifRecord) !void {
     }
 }
 
-pub fn deletePhoto(uuid: []const u8) !void {
+pub fn deletePhoto(username: []const u8, uuid: []const u8) !void {
     const io = global_io orelse return error.DbNotInitialized;
     db_mutex.lockUncancelable(io);
     defer db_mutex.unlock(io);
 
-    const db = db_conn orelse return error.DbNotInitialized;
+    const db = try getDb(username);
 
     const delete_sql = "DELETE FROM photos WHERE uuid = ?;";
 

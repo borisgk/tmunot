@@ -824,9 +824,8 @@ fn processJob(job: *FileJob) void {
         std.debug.print("Failed to insert photo metadata: {}\n", .{err});
         return;
     };
-    db.insertPhotoExif(full_exif_record) catch |err| {
-        std.debug.print("Failed to insert photo EXIF: {}\n", .{err});
-        return;
+    db.insertPhotoExif(job.username, full_exif_record) catch |err| {
+        std.debug.print("Failed to save EXIF data: {}\n", .{err});
     };
     const t_db = vips.getWallMillis();
     logger.logEvent(job.uuid, "database updated (bg)", job.t_start, t_db);
