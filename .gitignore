@@ -20,3 +20,5 @@ src/login_gen.html
 src/upload_gen.html
 *_gen.html
 databases/
+*.db-shm
+*.db-wal

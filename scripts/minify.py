@@ -177,6 +177,44 @@ def main():
         
         with open(os.path.join(src_dir, 'upload_gen.html'), 'w', encoding='utf-8') as f:
             f.write(upload_html)
+            
+    # Process admin.html
+    admin_path = os.path.join(src_dir, 'admin.html')
+    if os.path.exists(admin_path):
+        with open(admin_path, 'r', encoding='utf-8') as f:
+            admin_html = f.read()
+            
+        admin_html = re.sub(r'<link\s+rel="stylesheet"\s+href="/styles\.css"[^>]*>', css_replacement, admin_html)
+        
+        admin_js_path = os.path.join(src_dir, 'admin.js')
+        if os.path.exists(admin_js_path):
+            with open(admin_js_path, 'r', encoding='utf-8') as f:
+                admin_js = f.read()
+            min_admin_js = minify_js(admin_js)
+            admin_js_replacement = f'<script>{min_admin_js}</script>'
+            admin_html = re.sub(r'<script\s+src="/admin\.js"[^>]*>\s*</script>', admin_js_replacement, admin_html)
+            
+        with open(os.path.join(src_dir, 'admin_gen.html'), 'w', encoding='utf-8') as f:
+            f.write(admin_html)
+            
+    # Process users.html
+    users_path = os.path.join(src_dir, 'users.html')
+    if os.path.exists(users_path):
+        with open(users_path, 'r', encoding='utf-8') as f:
+            users_html = f.read()
+            
+        users_html = re.sub(r'<link\s+rel="stylesheet"\s+href="/styles\.css"[^>]*>', css_replacement, users_html)
+        
+        users_js_path = os.path.join(src_dir, 'users.js')
+        if os.path.exists(users_js_path):
+            with open(users_js_path, 'r', encoding='utf-8') as f:
+                users_js = f.read()
+            min_users_js = minify_js(users_js)
+            users_js_replacement = f'<script>{min_users_js}</script>'
+            users_html = re.sub(r'<script\s+src="/users\.js"[^>]*>\s*</script>', users_js_replacement, users_html)
+            
+        with open(os.path.join(src_dir, 'users_gen.html'), 'w', encoding='utf-8') as f:
+            f.write(users_html)
         
     print("Minification and embedding complete successfully.")
 
