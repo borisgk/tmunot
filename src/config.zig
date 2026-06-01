@@ -58,3 +58,48 @@ pub fn loadConfig(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !C
         .outputs = outputs,
     };
 }
+
+pub fn saveConfig(io: std.Io, path: []const u8, config: Config) !void {
+    const cwd = std.Io.Dir.cwd();
+    var file = try cwd.createFile(io, path, .{});
+    defer file.close(io);
+
+    var write_buffer: [1024 * 10]u8 = undefined;
+    var buffered_writer = file.writer(io, &write_buffer);
+    const writer = &buffered_writer.interface;
+
+    try std.json.Stringify.value(config, .{ .whitespace = .indent_4 }, writer);
+    try buffered_writer.flush();
+}
+
+pub fn parseConfigJson(allocator: std.mem.Allocator, json: []const u8) !Config {
+    const parsed = try std.json.parseFromSlice(Config, allocator, json, .{});
+    defer parsed.deinit();
+
+    // Deep copy slices to ensure they persist after parsed deinitialization
+    const outputs = try allocator.alloc(OutputConfig, parsed.value.outputs.len);
+    for (parsed.value.outputs, 0..) |out, i| {
+        outputs[i] = .{
+            .name = try allocator.dupe(u8, out.name),
+            .target_width = out.target_width,
+            .target_height = out.target_height,
+            .directory = try allocator.dupe(u8, out.directory),
+        };
+    }
+
+    // Sort outputs from largest to smallest by target_height for the cascade optimization
+    std.mem.sort(OutputConfig, outputs, {}, struct {
+        fn lessThan(_: void, a: OutputConfig, b: OutputConfig) bool {
+            return a.target_height > b.target_height;
+        }
+    }.lessThan);
+
+    return .{
+        .backend = try allocator.dupe(u8, parsed.value.backend),
+        .quality = parsed.value.quality,
+        .gallery_thumbnail_height = parsed.value.gallery_thumbnail_height,
+        .input_directory = try allocator.dupe(u8, parsed.value.input_directory),
+        .db_dir = try allocator.dupe(u8, parsed.value.db_dir),
+        .outputs = outputs,
+    };
+}

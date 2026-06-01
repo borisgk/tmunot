@@ -15,6 +15,7 @@ pub const AuthContext = struct {
     io: std.Io,
     jwt_secret: []const u8,
     users: std.StringHashMap(User),
+    users_lock: std.Io.RwLock,
     users_file_path: []const u8,
 
     pub fn init(allocator: std.mem.Allocator, io: std.Io, users_file_path: []const u8) !*AuthContext {
@@ -24,6 +25,7 @@ pub const AuthContext = struct {
             .io = io,
             .jwt_secret = try initJwtSecret(allocator, io),
             .users = std.StringHashMap(User).init(allocator),
+            .users_lock = .init,
             .users_file_path = try allocator.dupe(u8, users_file_path),
         };
 
@@ -127,7 +129,8 @@ pub const AuthContext = struct {
         }
     }
 
-    fn saveUsers(self: *AuthContext) !void {
+    // Assumes users_lock is already held (shared or exclusive)
+    fn saveUsersInternal(self: *AuthContext) !void {
         const cwd = std.Io.Dir.cwd();
         var file = try cwd.createFile(self.io, self.users_file_path, .{});
         defer file.close(self.io);
@@ -144,10 +147,19 @@ pub const AuthContext = struct {
         try std.json.Stringify.value(user_list.items, .{ .whitespace = .indent_4 }, &writer.interface);
     }
 
+    pub fn saveUsers(self: *AuthContext) !void {
+        self.users_lock.lockSharedUncancelable(self.io);
+        defer self.users_lock.unlockShared(self.io);
+        try self.saveUsersInternal();
+    }
+
     pub fn createUser(self: *AuthContext, username: []const u8, password: []const u8) !void {
         var out_buf: [128]u8 = undefined;
         const hash = try argon2.strHash(password, .{ .allocator = self.allocator, .params = argon2.Params.interactive_2id }, &out_buf, self.io);
         
+        self.users_lock.lockUncancelable(self.io);
+        defer self.users_lock.unlock(self.io);
+
         try self.users.put(try self.allocator.dupe(u8, username), .{
             .username = try self.allocator.dupe(u8, username),
             .password_hash = try self.allocator.dupe(u8, hash),
@@ -155,7 +167,11 @@ pub const AuthContext = struct {
     }
 
     pub fn verifyCredentials(self: *AuthContext, username: []const u8, password: []const u8) bool {
-        const user = self.users.get(username) orelse return false;
+        self.users_lock.lockSharedUncancelable(self.io);
+        const user_opt = self.users.get(username);
+        self.users_lock.unlockShared(self.io);
+
+        const user = user_opt orelse return false;
         // argon2.strVerify needs scratch memory; give it a local arena so it
         // doesn't race on the shared GPA under concurrent login requests.
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -164,6 +180,34 @@ pub const AuthContext = struct {
             return false;
         };
         return true;
+    }
+
+    pub fn deleteUser(self: *AuthContext, username: []const u8) !void {
+        self.users_lock.lockUncancelable(self.io);
+        defer self.users_lock.unlock(self.io);
+        if (self.users.get(username)) |user| {
+            _ = self.users.remove(username);
+            self.allocator.free(user.username); // username is the key as well
+            self.allocator.free(user.password_hash);
+            try self.saveUsersInternal();
+        } else {
+            return error.UserNotFound;
+        }
+    }
+
+    pub fn getUsers(self: *AuthContext, allocator: std.mem.Allocator) ![]const []const u8 {
+        self.users_lock.lockSharedUncancelable(self.io);
+        defer self.users_lock.unlockShared(self.io);
+
+        var user_list = std.ArrayList([]const u8).empty;
+        errdefer user_list.deinit(allocator);
+
+        var it = self.users.iterator();
+        while (it.next()) |entry| {
+            try user_list.append(allocator, try allocator.dupe(u8, entry.key_ptr.*));
+        }
+
+        return user_list.toOwnedSlice(allocator);
     }
 
     pub fn generateJwt(self: *AuthContext, username: []const u8) ![]u8 {

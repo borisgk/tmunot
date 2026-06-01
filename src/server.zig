@@ -7,6 +7,7 @@ const db = @import("db.zig");
 const server_gallery = @import("server/gallery.zig");
 const server_auth = @import("server/auth.zig");
 const server_upload = @import("server/upload.zig");
+const server_admin = @import("server/admin.zig");
 
 // Helper to decode URL-encoded string (modifies in place, returns slice, or allocates)
 pub fn decodeUrl(allocator: std.mem.Allocator, encoded: []const u8) ![]u8 {
@@ -225,6 +226,55 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
 
     if (req.head.method == .POST and std.mem.eql(u8, target, "/upload")) {
         try server_upload.handleUpload(req, io, req_alloc, config, is_authenticated, username, multipart_boundary);
+        return;
+    }
+
+    if (req.head.method == .GET and std.mem.eql(u8, target, "/admin")) {
+        if (!is_authenticated or username == null) {
+            try req.respond("", .{
+                .status = .see_other,
+                .extra_headers = &.{
+                    .{ .name = "location", .value = "/" },
+                },
+            });
+            return;
+        }
+
+        try req.respond(@embedFile("admin_gen.html"), .{
+            .extra_headers = &.{
+                .{ .name = "content-type", .value = "text/html" },
+                .{ .name = "cache-control", .value = "no-cache, no-store, must-revalidate" },
+            },
+        });
+        return;
+    }
+
+    if (req.head.method == .GET and std.mem.eql(u8, target, "/users")) {
+        if (!is_authenticated or username == null) {
+            try req.respond("", .{
+                .status = .see_other,
+                .extra_headers = &.{
+                    .{ .name = "location", .value = "/" },
+                },
+            });
+            return;
+        }
+
+        try req.respond(@embedFile("users_gen.html"), .{
+            .extra_headers = &.{
+                .{ .name = "content-type", .value = "text/html" },
+                .{ .name = "cache-control", .value = "no-cache, no-store, must-revalidate" },
+            },
+        });
+        return;
+    }
+
+    if (std.mem.startsWith(u8, target, "/api/admin/")) {
+        if (!is_authenticated or username == null) {
+            try req.respond("Unauthorized", .{ .status = .unauthorized });
+            return;
+        }
+        try server_admin.handleAdminApi(req, io, req_alloc, auth_ctx, config, username.?);
         return;
     }
 

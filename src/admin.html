@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Image Gallery</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="preload" href="/fonts/RobotoFlex-VariableFont.woff2" as="font" type="font/woff2" crossorigin>
+    <style>
+        .admin-container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 32px;
+        }
+        .admin-section {
+            margin-bottom: 40px;
+        }
+        .admin-section h2 {
+            margin-top: 0;
+            border-bottom: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
+            padding-bottom: 8px;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--md-sys-color-outline, #79747e);
+            background: transparent;
+            color: var(--md-sys-color-on-surface);
+            font-family: inherit;
+        }
+        .form-row {
+            display: flex;
+            gap: 16px;
+        }
+        .form-row > .form-group {
+            flex: 1;
+        }
+        .users-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+        }
+        .users-table th, .users-table td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
+        }
+        .users-table th {
+            font-weight: 500;
+        }
+        .action-btn {
+            background: none;
+            border: none;
+            color: var(--md-sys-color-error, #ba1a1a);
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 500;
+        }
+        .action-btn:hover {
+            text-decoration: underline;
+        }
+        .notice {
+            background: var(--md-sys-color-secondary-container, #e8def8);
+            color: var(--md-sys-color-on-secondary-container, #1d192b);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 0.9em;
+        }
+        .btn-primary {
+            background: var(--md-sys-color-primary, #6750a4);
+            color: var(--md-sys-color-on-primary, #ffffff);
+            border: none;
+            padding: 10px 24px;
+            border-radius: 20px;
+            font-weight: 500;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--md-sys-color-inverse-surface, #313033);
+            color: var(--md-sys-color-inverse-on-surface, #f4eff4);
+            padding: 12px 24px;
+            border-radius: 4px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        .toast.show {
+            opacity: 1;
+        }
+        .tab {
+            padding: 12px 24px;
+            text-decoration: none;
+            color: var(--md-sys-color-on-surface-variant);
+            font-weight: 500;
+            border-bottom: 3px solid transparent;
+        }
+        .tab.active {
+            color: var(--md-sys-color-primary);
+            border-bottom: 3px solid var(--md-sys-color-primary);
+        }
+        .tab:hover:not(.active) {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px 8px 0 0;
+        }
+        .tabs {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin-top: 80px;
+            margin-bottom: -20px;
+        }
+    </style>
+</head>
+<body class="gallery-body">
+    <header class="md-top-app-bar">
+        <div class="md-top-app-bar__left">
+            <a href="/" class="md-header-logout-icon-btn" style="text-decoration: none;" title="Back to Gallery">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+            </a>
+        </div>
+        <span class="md-top-app-bar__title">Admin Settings</span>
+        <div class="md-top-app-bar__actions">
+            <form method="POST" action="/logout" style="margin: 0;">
+                <button type="submit" class="md-header-logout-icon-btn" title="Logout" aria-label="Logout">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                        <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+                    </svg>
+                </button>
+            </form>
+        </div>
+    </header>
+
+    <div class="tabs">
+        <a href="/admin" class="tab active">App Settings</a>
+        <a href="/users" class="tab">User Management</a>
+    </div>
+
+    <main class="admin-container">
+        <section class="admin-section">
+            <h2>App Settings</h2>
+            <div class="notice">
+                Changes to App Settings will be saved to config.json but require a server restart to take effect.
+            </div>
+            <form id="config-form">
+                <div class="form-group">
+                    <label>Backend (libvips / imagemagick)</label>
+                    <input type="text" id="cfg-backend" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Quality (0-100)</label>
+                        <input type="number" id="cfg-quality" min="1" max="100" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Gallery Thumbnail Height</label>
+                        <input type="number" id="cfg-thumb-height" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Input Directory</label>
+                        <input type="text" id="cfg-input-dir" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Database Directory</label>
+                        <input type="text" id="cfg-db-dir" required>
+                    </div>
+                </div>
+                
+                <h3 style="margin-top: 24px;">Previews Settings</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Max Width</label>
+                        <input type="number" id="cfg-previews-width" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Max Height</label>
+                        <input type="number" id="cfg-previews-height" required>
+                    </div>
+                </div>
+
+                <h3 style="margin-top: 24px;">Thumbnails Settings</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Max Width</label>
+                        <input type="number" id="cfg-thumbnails-width" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Max Height</label>
+                        <input type="number" id="cfg-thumbnails-height" required>
+                    </div>
+                </div>
+
+                <div style="text-align: right; margin-top: 32px;">
+                    <button type="submit" class="btn-primary">Save Settings</button>
+                </div>
+            </form>
+        </section>
+    </main>
+
+    <div id="toast" class="toast">Saved successfully.</div>
+
+    <script src="/admin.js"></script>
+</body>
+</html>
