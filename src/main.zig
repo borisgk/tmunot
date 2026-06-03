@@ -34,10 +34,13 @@ pub fn main(init: std.process.Init) !void {
     defer allocator.free(config.backend);
     defer allocator.free(config.input_directory);
     defer allocator.free(config.db_dir);
+    defer allocator.free(config.originals_dir);
+    defer allocator.free(config.previews_dir);
+    defer allocator.free(config.thumbnails_dir);
+    defer allocator.free(config.hover_previews_dir);
     defer {
         for (config.outputs) |out| {
             allocator.free(out.name);
-            allocator.free(out.directory);
         }
         allocator.free(config.outputs);
     }
@@ -55,8 +58,8 @@ pub fn main(init: std.process.Init) !void {
     var auth_ctx = try auth.AuthContext.init(allocator, io, "users.json");
     defer auth_ctx.deinit();
 
-    // Start background image processing queue worker
-    try processor.startQueueWorker(allocator, io);
+    // 3. Start background job processor
+    try processor.startQueueWorker(allocator, init.io, &config);
 
     // 7. Start web server
     try server.startServer(init.io, auth_ctx, config);

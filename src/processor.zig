@@ -3,6 +3,7 @@ const vips = @import("vips.zig");
 const logger = @import("logger.zig");
 const db = @import("db.zig");
 const exif = @import("exif.zig");
+const config_mod = @import("config.zig");
 
 extern "c" fn rename(old: [*c]const u8, new: [*c]const u8) c_int;
 extern "c" fn unlink(pathname: [*c]const u8) c_int;
@@ -47,6 +48,7 @@ var job_queue_sem = std.Io.Semaphore{};
 var worker_threads: ?[]std.Thread = null;
 var worker_should_exit: bool = false;
 var global_io: ?std.Io = null;
+var global_config: ?*const config_mod.Config = null;
 
 // Registry State
 pub const JobStatus = enum {
@@ -296,10 +298,11 @@ fn popJob() ?*FileJob {
     return null;
 }
 
-pub fn startQueueWorker(allocator: std.mem.Allocator, io: std.Io) !void {
+pub fn startQueueWorker(allocator: std.mem.Allocator, io: std.Io, config: *const config_mod.Config) !void {
     if (worker_threads != null) return;
     worker_should_exit = false;
     global_io = io;
+    global_config = config;
 
     // Initialize registry and sse allocator
     initRegistry(allocator);
@@ -373,9 +376,9 @@ fn processJob(job: *FileJob) void {
 
     const io = global_io orelse return;
 
-    // Formulate chronological original path: photos/<username>/originals/<year>/<month>/<uuid>.<ext>
-    var orig_path = std.fmt.allocPrint(job.allocator, "photos/{s}/originals/{s}/{s}/{s}.{s}", .{
-        job.username, job.year, job.month, job.uuid, job.extension
+    // Formulate chronological original path
+    var orig_path = std.fmt.allocPrint(job.allocator, "{s}/{s}/{s}/{s}/{s}.{s}", .{
+        global_config.?.originals_dir, job.username, job.year, job.month, job.uuid, job.extension
     }) catch |err| {
         std.debug.print("Failed to format original path for DB: {}\n", .{err});
         return;
@@ -466,7 +469,7 @@ fn processJob(job: *FileJob) void {
                 const shooting_day = sd[8..10];
 
                 if (!std.mem.eql(u8, shooting_year, job.year) or !std.mem.eql(u8, shooting_month, job.month) or !std.mem.eql(u8, shooting_day, job.day)) {
-                    const new_orig_dir = std.fmt.allocPrint(job.allocator, "photos/{s}/originals/{s}/{s}", .{ job.username, shooting_year, shooting_month }) catch |err| {
+                    const new_orig_dir = std.fmt.allocPrint(job.allocator, "{s}/{s}/{s}/{s}", .{ global_config.?.originals_dir, job.username, shooting_year, shooting_month }) catch |err| {
                         std.debug.print("Failed to format new original dir: {}\n", .{err});
                         return;
                     };
@@ -529,7 +532,7 @@ fn processJob(job: *FileJob) void {
         }
 
         // 2. Transcode 3-second looping silent hover preview (hover_previews/YYYY/MM/<uuid>.mp4)
-        const hover_dir = std.fmt.allocPrint(job.allocator, "photos/{s}/hover_previews/{s}/{s}", .{ job.username, job.year, job.month }) catch |err| {
+        const hover_dir = std.fmt.allocPrint(job.allocator, "{s}/{s}/{s}/{s}", .{ global_config.?.hover_previews_dir, job.username, job.year, job.month }) catch |err| {
             std.debug.print("Failed to format hover previews dir: {}\n", .{err});
             return;
         };
@@ -565,7 +568,7 @@ fn processJob(job: *FileJob) void {
         }
 
         // 4. Extract single static frame at 00:00:02
-        const temp_frame_path = std.fmt.allocPrint(job.allocator, "photos/{s}/originals/{s}/{s}/{s}_frame.jpg", .{ job.username, job.year, job.month, job.uuid }) catch |err| {
+        const temp_frame_path = std.fmt.allocPrint(job.allocator, "{s}/{s}/{s}/{s}/{s}_frame.jpg", .{ global_config.?.originals_dir, job.username, job.year, job.month, job.uuid }) catch |err| {
             std.debug.print("Failed to format temp frame path: {}\n", .{err});
             return;
         };
@@ -595,7 +598,7 @@ fn processJob(job: *FileJob) void {
         }
 
         // 5. Build static thumbnails using libvips from the extracted frame
-        const target_dir = std.fmt.allocPrint(job.allocator, "photos/{s}/thumbnails/{s}/{s}", .{ job.username, job.year, job.month }) catch |err| {
+        const target_dir = std.fmt.allocPrint(job.allocator, "{s}/{s}/{s}/{s}", .{ global_config.?.thumbnails_dir, job.username, job.year, job.month }) catch |err| {
             std.debug.print("Failed to format thumbnails directory: {}\n", .{err});
             return;
         };
@@ -711,7 +714,7 @@ fn processJob(job: *FileJob) void {
             // Only move if it differs from the upload date
             if (!std.mem.eql(u8, shooting_year, job.year) or !std.mem.eql(u8, shooting_month, job.month) or !std.mem.eql(u8, shooting_day, job.day)) {
                 // Construct new originals directory path
-                const new_orig_dir = std.fmt.allocPrint(job.allocator, "photos/{s}/originals/{s}/{s}", .{ job.username, shooting_year, shooting_month }) catch |err| {
+                const new_orig_dir = std.fmt.allocPrint(job.allocator, "{s}/{s}/{s}/{s}", .{ global_config.?.originals_dir, job.username, shooting_year, shooting_month }) catch |err| {
                     std.debug.print("Failed to format new original dir: {}\n", .{err});
                     return;
                 };
@@ -844,8 +847,8 @@ fn processJob(job: *FileJob) void {
     var current_img: ?*vips.VipsImage = null;
 
     for (targets, 0..) |target, idx| {
-        // Construct target directory path: photos/<username>/<target.name>/<year>/<month>
-        const target_dir = std.fmt.allocPrint(job.allocator, "photos/{s}/{s}/{s}/{s}", .{ job.username, target.name, job.year, job.month }) catch |err| {
+        const base_dir = if (std.mem.eql(u8, target.name, "previews")) global_config.?.previews_dir else global_config.?.thumbnails_dir;
+        const target_dir = std.fmt.allocPrint(job.allocator, "{s}/{s}/{s}/{s}", .{ base_dir, job.username, job.year, job.month }) catch |err| {
             std.debug.print("Failed to format target directory: {}\n", .{err});
             continue;
         };

@@ -157,8 +157,8 @@ pub fn handleUpload(
 
     logger.logEvent(uuid, "file received", t_received, t_received);
 
-    // 5. Write original photo to photos/<username>/originals/<year>/<month>/<uuid>.<ext>
-    const orig_dir = try std.fmt.allocPrint(req_alloc, "photos/{s}/originals/{s}/{s}", .{ user, year, month });
+    // 5. Write original photo to <originals_dir>/<username>/<year>/<month>/<uuid>.<ext>
+    const orig_dir = try std.fmt.allocPrint(req_alloc, "{s}/{s}/{s}/{s}", .{ config.originals_dir, user, year, month });
     defer req_alloc.free(orig_dir);
 
     const cwd = std.Io.Dir.cwd();
