@@ -4,7 +4,6 @@ pub const OutputConfig = struct {
     name: []const u8,
     target_width: i32,
     target_height: i32,
-    directory: []const u8,
 };
 
 pub const Config = struct {
@@ -13,6 +12,10 @@ pub const Config = struct {
     gallery_thumbnail_height: i32,
     input_directory: []const u8,
     db_dir: []const u8,
+    originals_dir: []const u8,
+    previews_dir: []const u8,
+    thumbnails_dir: []const u8,
+    hover_previews_dir: []const u8,
     outputs: []OutputConfig,
 };
 
@@ -38,7 +41,6 @@ pub fn loadConfig(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !C
             .name = try allocator.dupe(u8, out.name),
             .target_width = out.target_width,
             .target_height = out.target_height,
-            .directory = try allocator.dupe(u8, out.directory),
         };
     }
 
@@ -55,6 +57,10 @@ pub fn loadConfig(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !C
         .gallery_thumbnail_height = parsed.value.gallery_thumbnail_height,
         .input_directory = try allocator.dupe(u8, parsed.value.input_directory),
         .db_dir = try allocator.dupe(u8, parsed.value.db_dir),
+        .originals_dir = try allocator.dupe(u8, parsed.value.originals_dir),
+        .previews_dir = try allocator.dupe(u8, parsed.value.previews_dir),
+        .thumbnails_dir = try allocator.dupe(u8, parsed.value.thumbnails_dir),
+        .hover_previews_dir = try allocator.dupe(u8, parsed.value.hover_previews_dir),
         .outputs = outputs,
     };
 }
@@ -83,7 +89,6 @@ pub fn parseConfigJson(allocator: std.mem.Allocator, json: []const u8) !Config {
             .name = try allocator.dupe(u8, out.name),
             .target_width = out.target_width,
             .target_height = out.target_height,
-            .directory = try allocator.dupe(u8, out.directory),
         };
     }
 
@@ -100,6 +105,10 @@ pub fn parseConfigJson(allocator: std.mem.Allocator, json: []const u8) !Config {
         .gallery_thumbnail_height = parsed.value.gallery_thumbnail_height,
         .input_directory = try allocator.dupe(u8, parsed.value.input_directory),
         .db_dir = try allocator.dupe(u8, parsed.value.db_dir),
+        .originals_dir = try allocator.dupe(u8, parsed.value.originals_dir),
+        .previews_dir = try allocator.dupe(u8, parsed.value.previews_dir),
+        .thumbnails_dir = try allocator.dupe(u8, parsed.value.thumbnails_dir),
+        .hover_previews_dir = try allocator.dupe(u8, parsed.value.hover_previews_dir),
         .outputs = outputs,
     };
 }

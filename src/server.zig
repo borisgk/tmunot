@@ -138,7 +138,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
     std.debug.print("Request: {s} {s}\n", .{ @tagName(req.head.method), target });
 
     // Route static assets, previews, thumbnails, and fonts first
-    const handled_static = try server_gallery.serveStaticFile(req_alloc, req, io, is_authenticated);
+    const handled_static = try server_gallery.serveStaticFile(req_alloc, req, io, is_authenticated, config);
     if (handled_static) return;
 
     if (req.head.method == .GET and std.mem.eql(u8, target, "/")) {
@@ -305,14 +305,16 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
         const loc = try db.getPhotoLocation(photo_uuid, req_alloc);
         if (loc) |l| {
             if (std.mem.eql(u8, l.username, username.?)) {
-                const orig_path = try std.fmt.allocPrint(req_alloc, "photos/{s}/originals/{s}/{s}/{s}.{s}", .{ l.username, l.year, l.month, photo_uuid, l.extension });
-                const prev_path = try std.fmt.allocPrint(req_alloc, "photos/{s}/previews/{s}/{s}/{s}.{s}", .{ l.username, l.year, l.month, photo_uuid, l.extension });
-                const thumb_path = try std.fmt.allocPrint(req_alloc, "photos/{s}/thumbnails/{s}/{s}/{s}.{s}", .{ l.username, l.year, l.month, photo_uuid, l.extension });
+                const orig_path = try std.fmt.allocPrint(req_alloc, "{s}/{s}/{s}/{s}/{s}.{s}", .{ config.originals_dir, l.username, l.year, l.month, photo_uuid, l.extension });
+                const prev_path = try std.fmt.allocPrint(req_alloc, "{s}/{s}/{s}/{s}/{s}.{s}", .{ config.previews_dir, l.username, l.year, l.month, photo_uuid, l.extension });
+                const thumb_path = try std.fmt.allocPrint(req_alloc, "{s}/{s}/{s}/{s}/{s}.{s}", .{ config.thumbnails_dir, l.username, l.year, l.month, photo_uuid, l.extension });
+                const hover_path = try std.fmt.allocPrint(req_alloc, "{s}/{s}/{s}/{s}/{s}.mp4", .{ config.hover_previews_dir, l.username, l.year, l.month, photo_uuid });
 
                 const cwd = std.Io.Dir.cwd();
                 cwd.deleteFile(io, orig_path) catch |err| std.debug.print("Failed to delete orig: {}\n", .{err});
                 cwd.deleteFile(io, prev_path) catch |err| std.debug.print("Failed to delete prev: {}\n", .{err});
                 cwd.deleteFile(io, thumb_path) catch |err| std.debug.print("Failed to delete thumb: {}\n", .{err});
+                cwd.deleteFile(io, hover_path) catch {};
 
                 try db.deletePhoto(username.?, photo_uuid);
 

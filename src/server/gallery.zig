@@ -2,8 +2,9 @@ const std = @import("std");
 const db = @import("../db.zig");
 const server = @import("../server.zig");
 const processor = @import("../processor.zig");
+const config_mod = @import("../config.zig");
 
-pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Request, io: std.Io, is_authenticated: bool) !bool {
+pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Request, io: std.Io, is_authenticated: bool, config: config_mod.Config) !bool {
     _ = allocator; // kept for API compatibility; we use a local arena below
     const target = req.head.target;
 
@@ -102,9 +103,14 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
         else
             loc.?.extension;
 
-        const full_path = try std.fmt.allocPrint(alloc, "photos/{s}/{s}/{s}/{s}/{s}.{s}", .{
+        const base_dir = if (std.mem.eql(u8, type_folder, "originals")) config.originals_dir
+            else if (std.mem.eql(u8, type_folder, "previews")) config.previews_dir
+            else if (std.mem.eql(u8, type_folder, "thumbnails")) config.thumbnails_dir
+            else config.hover_previews_dir;
+
+        const full_path = try std.fmt.allocPrint(alloc, "{s}/{s}/{s}/{s}/{s}.{s}", .{
+            base_dir,
             loc.?.username,
-            type_folder,
             loc.?.year,
             loc.?.month,
             uuid,
