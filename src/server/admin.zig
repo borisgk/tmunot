@@ -8,7 +8,7 @@ pub fn handleAdminApi(req: *std.http.Server.Request, io: std.Io, req_alloc: std.
     // GET /api/admin/config
     if (req.head.method == .GET and std.mem.eql(u8, target, "/api/admin/config")) {
         const cwd = std.Io.Dir.cwd();
-        var file = cwd.openFile(io, "config.json", .{}) catch {
+        var file = cwd.openFile(io, config_mod.resolved_config_path, .{}) catch {
             try req.respond("Error", .{ .status = .internal_server_error });
             return;
         };
@@ -42,7 +42,7 @@ pub fn handleAdminApi(req: *std.http.Server.Request, io: std.Io, req_alloc: std.
             return;
         };
 
-        config_mod.saveConfig(io, "config.json", new_config) catch {
+        config_mod.saveConfig(io, config_mod.resolved_config_path, new_config) catch {
             try req.respond("Error saving config", .{ .status = .internal_server_error });
             return;
         };

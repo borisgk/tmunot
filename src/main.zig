@@ -30,7 +30,37 @@ pub fn main(init: std.process.Init) !void {
 
 
     // 1. Load config
-    const config = try config_mod.loadConfig(allocator, io, "config.json");
+    const config_paths = [_][]const u8{
+        "/etc/tmunot/config.json",
+        "config.json",
+    };
+    var config: config_mod.Config = undefined;
+    var loaded = false;
+    var path_to_free: ?[]const u8 = null;
+    defer if (path_to_free) |p| allocator.free(p);
+
+    for (config_paths) |path| {
+        if (config_mod.loadConfig(allocator, io, path)) |cfg| {
+            config = cfg;
+            const dupe_path = try allocator.dupe(u8, path);
+            path_to_free = dupe_path;
+            config_mod.resolved_config_path = dupe_path;
+            std.debug.print("Loaded config from: {s}\n", .{path});
+            loaded = true;
+            break;
+        } else |err| {
+            if (err == error.FileNotFound) {
+                continue;
+            }
+            std.debug.print("Error loading config from {s}: {}\n", .{ path, err });
+            return err;
+        }
+    }
+
+    if (!loaded) {
+        std.debug.print("Error: Configuration file config.json not found in /etc/tmunot/config.json or the current working directory.\n", .{});
+        std.process.exit(1);
+    }
     defer allocator.free(config.backend);
     defer allocator.free(config.input_directory);
     defer allocator.free(config.db_dir);
