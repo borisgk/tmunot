@@ -1,5 +1,7 @@
 const std = @import("std");
 
+pub var resolved_config_path: []const u8 = "config.json";
+
 pub const OutputConfig = struct {
     name: []const u8,
     target_width: i32,
