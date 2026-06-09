@@ -151,6 +151,34 @@ def main():
     with open(os.path.join(src_dir, 'login_gen.html'), 'w', encoding='utf-8') as f:
         f.write(login_html)
 
+    # Process albums.html
+    albums_path = os.path.join(src_dir, 'albums.html')
+    if os.path.exists(albums_path):
+        with open(albums_path, 'r', encoding='utf-8') as f:
+            albums_html = f.read()
+            
+        albums_html = re.sub(r'<link\s+rel="stylesheet"\s+href="/styles\.css"[^>]*>', css_replacement, albums_html)
+        
+        albums_js_replacement = f'<script>{min_js}</script>'
+        albums_html = re.sub(r'<script\s+src="/script\.js"[^>]*>\s*</script>', albums_js_replacement, albums_html)
+        
+        with open(os.path.join(src_dir, 'albums_gen.html'), 'w', encoding='utf-8') as f:
+            f.write(albums_html)
+
+    # Process album_detail.html
+    album_detail_path = os.path.join(src_dir, 'album_detail.html')
+    if os.path.exists(album_detail_path):
+        with open(album_detail_path, 'r', encoding='utf-8') as f:
+            album_detail_html = f.read()
+            
+        album_detail_html = re.sub(r'<link\s+rel="stylesheet"\s+href="/styles\.css"[^>]*>', css_replacement, album_detail_html)
+        
+        album_detail_js_replacement = f'<script>{min_js}</script>'
+        album_detail_html = re.sub(r'<script\s+src="/script\.js"[^>]*>\s*</script>', album_detail_js_replacement, album_detail_html)
+        
+        with open(os.path.join(src_dir, 'album_detail_gen.html'), 'w', encoding='utf-8') as f:
+            f.write(album_detail_html)
+
     # Process upload.html
     upload_path = os.path.join(src_dir, 'upload.html')
     if os.path.exists(upload_path):
