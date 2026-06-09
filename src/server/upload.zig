@@ -30,7 +30,7 @@ fn generateUuid(allocator: std.mem.Allocator, io: std.Io) ![]const u8 {
 
 extern "c" fn time(t: ?*i64) i64;
 
-fn getCurrentDateTime(allocator: std.mem.Allocator) !struct { year: []const u8, month: []const u8, day: []const u8, iso_str: []const u8 } {
+pub fn getCurrentDateTime(allocator: std.mem.Allocator) !struct { year: []const u8, month: []const u8, day: []const u8, iso_str: []const u8 } {
     const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = @intCast(time(null)) };
     const epoch_day = epoch_seconds.getEpochDay();
     const year_day = epoch_day.calculateYearDay();

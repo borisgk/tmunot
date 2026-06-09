@@ -1,3 +1,6 @@
+const originalLeftHtml = document.getElementById('app-bar-left') ? document.getElementById('app-bar-left').innerHTML : '';
+const originalTitleText = document.getElementById('app-bar-title') ? document.getElementById('app-bar-title').textContent : 'Image Gallery';
+
 function openLightbox(src) {
     if (typeof selectedPhotos !== 'undefined' && selectedPhotos.size > 0) {
         const ev = window.event;
@@ -152,6 +155,37 @@ function toggleMenu(e, uuid, ext) {
         }
         closeMenu();
     };
+    
+    const isAlbumDetail = window.location.pathname.startsWith('/albums/') && window.location.pathname !== '/albums';
+    const addToAlbumBtn = document.getElementById('menu-add-to-album');
+    if (addToAlbumBtn) {
+        const textSpan = addToAlbumBtn.querySelector('span');
+        const svgIcon = addToAlbumBtn.querySelector('svg');
+        if (isAlbumDetail) {
+            if (textSpan) textSpan.textContent = 'Delete from album';
+            if (svgIcon) {
+                svgIcon.innerHTML = '<path fill="currentColor" d="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-1 8H11v-2h8v2z"/>';
+            }
+            addToAlbumBtn.onclick = function(event) {
+                event.stopPropagation();
+                const albumUuid = window.location.pathname.split('/').pop();
+                if (confirm("Are you sure you want to delete this photo from the album?")) {
+                    deletePhotoFromAlbum(albumUuid, uuid);
+                }
+                closeMenu();
+            };
+        } else {
+            if (textSpan) textSpan.textContent = 'Add to album';
+            if (svgIcon) {
+                svgIcon.innerHTML = '<path fill="currentColor" d="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/>';
+            }
+            addToAlbumBtn.onclick = function(event) {
+                event.stopPropagation();
+                openAddToAlbumModal([uuid]);
+                closeMenu();
+            };
+        }
+    }
 }
 
 function closeMenu() {
@@ -265,12 +299,32 @@ function updateSelectionUI() {
         `;
         
         selActions.style.display = 'flex';
+        
+        const isAlbumDetail = window.location.pathname.startsWith('/albums/') && window.location.pathname !== '/albums';
+        const bulkBtn = document.getElementById('bulk-add-to-album-btn');
+        if (bulkBtn) {
+            if (isAlbumDetail) {
+                bulkBtn.title = "Delete from album";
+                bulkBtn.setAttribute('aria-label', "Delete from album");
+                bulkBtn.innerHTML = '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-1 8H11v-2h8v2z"/></svg>';
+                bulkBtn.onclick = function() {
+                    openBulkDeleteFromAlbum();
+                };
+            } else {
+                bulkBtn.title = "Add to album";
+                bulkBtn.setAttribute('aria-label', "Add to album");
+                bulkBtn.innerHTML = '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/></svg>';
+                bulkBtn.onclick = function() {
+                    openBulkAddToAlbum();
+                };
+            }
+        }
     } else {
         document.body.classList.remove('selection-mode');
         appBar.classList.remove('selection-mode');
         
-        title.textContent = 'Image Gallery';
-        left.innerHTML = '';
+        title.textContent = originalTitleText;
+        left.innerHTML = originalLeftHtml;
         selActions.style.display = 'none';
     }
 }
@@ -409,5 +463,274 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
+});
+
+/* --- Albums Logic --- */
+function openCreateAlbumModal() {
+    const modal = document.getElementById('create-album-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        void modal.offsetWidth; // force reflow
+        modal.classList.add('active');
+    }
+}
+
+function closeCreateAlbumModal(e) {
+    if (e.target.id === 'create-album-modal') {
+        const modal = document.getElementById('create-album-modal');
+        modal.classList.remove('active');
+        setTimeout(() => {
+            if (!modal.classList.contains('active')) {
+                modal.style.display = 'none';
+            }
+        }, 300);
+    }
+}
+
+function submitCreateAlbum() {
+    const nameInput = document.getElementById('album-name');
+    const descInput = document.getElementById('album-desc');
+    const name = nameInput.value.trim();
+    const desc = descInput.value.trim();
+    if (!name) {
+        alert("Album name is required.");
+        return;
+    }
+    fetch('/api/albums', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, description: desc || null })
+    }).then(res => {
+        if (res.ok) {
+            window.location.reload();
+        } else {
+            alert("Failed to create album.");
+        }
+    }).catch(err => {
+        console.error(err);
+        alert("Error creating album.");
+    });
+}
+
+/* --- Add to Album Logic --- */
+let photosToAdd = [];
+
+function openAddToAlbumModal(uuids) {
+    photosToAdd = uuids;
+    const modal = document.getElementById('album-select-modal');
+    const container = document.getElementById('album-list-container');
+    if (!modal || !container) return;
+
+    container.innerHTML = '<p style="text-align: center; color: var(--md-sys-color-outline); padding: 16px 0;">Loading albums...</p>';
+    
+    modal.style.display = 'flex';
+    void modal.offsetWidth; // trigger reflow
+    modal.classList.add('active');
+
+    fetch('/api/albums')
+        .then(res => {
+            if (!res.ok) throw new Error("Failed to load albums");
+            return res.json();
+        })
+        .then(albums => {
+            container.innerHTML = '';
+            if (albums.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: var(--md-sys-color-outline); padding: 16px 0;">No albums created yet.</p>';
+                return;
+            }
+            albums.forEach(album => {
+                const label = document.createElement('label');
+                label.style.display = 'flex';
+                label.style.alignItems = 'center';
+                label.style.gap = '12px';
+                label.style.padding = '12px';
+                label.style.borderRadius = '12px';
+                label.style.background = 'var(--md-sys-color-surface-container-high)';
+                label.style.cursor = 'pointer';
+                label.style.transition = 'background 0.2s';
+                
+                label.innerHTML = `
+                    <input type="radio" name="selected-album" value="${album.uuid}" style="accent-color: var(--md-sys-color-primary);">
+                    <div style="display: flex; flex-direction: column;">
+                        <span style="color: var(--md-sys-color-on-surface); font-weight: 500;">${album.name}</span>
+                        <span style="font-size: 0.8rem; color: var(--md-sys-color-outline);">${album.photo_count} photos</span>
+                    </div>
+                `;
+                container.appendChild(label);
+            });
+        })
+        .catch(err => {
+            console.error(err);
+            container.innerHTML = '<p style="text-align: center; color: var(--md-sys-color-error); padding: 16px 0;">Error loading albums.</p>';
+        });
+}
+
+function closeAlbumSelectModal(e) {
+    if (e.target.id === 'album-select-modal') {
+        const modal = document.getElementById('album-select-modal');
+        modal.classList.remove('active');
+        setTimeout(() => {
+            if (!modal.classList.contains('active')) {
+                modal.style.display = 'none';
+                photosToAdd = [];
+            }
+        }, 300);
+    }
+}
+
+function openBulkAddToAlbum() {
+    if (typeof selectedPhotos !== 'undefined' && selectedPhotos.size > 0) {
+        openAddToAlbumModal(Array.from(selectedPhotos));
+    }
+}
+
+function deletePhotoFromAlbum(albumUuid, photoUuid) {
+    fetch(`/api/albums/${albumUuid}/photos/${photoUuid}`, { method: 'DELETE' })
+        .then(res => {
+            if (res.ok) {
+                const card = document.querySelector(`.card[data-uuid="${photoUuid}"]`);
+                if (card) {
+                    card.style.transition = 'all 350ms var(--md-sys-motion-easing-standard)';
+                    card.style.opacity = '0';
+                    card.style.transform = 'scale(0.85)';
+                    setTimeout(() => {
+                        card.style.flex = '0 1 0px';
+                        card.style.width = '0px';
+                        card.style.marginLeft = '0px';
+                        card.style.marginRight = '0px';
+                        card.style.padding = '0px';
+                    }, 150);
+                    setTimeout(() => card.remove(), 350);
+                }
+                showToast("Photo deleted from album successfully!");
+            } else {
+                alert("Failed to delete photo from album.");
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert("Error deleting photo from album.");
+        });
+}
+
+function openBulkDeleteFromAlbum() {
+    if (typeof selectedPhotos !== 'undefined' && selectedPhotos.size > 0) {
+        const albumUuid = window.location.pathname.split('/').pop();
+        if (confirm(`Are you sure you want to delete the ${selectedPhotos.size} selected photos from this album?`)) {
+            const promises = Array.from(selectedPhotos).map(uuid => {
+                return fetch(`/api/albums/${albumUuid}/photos/${uuid}`, { method: 'DELETE' })
+                    .then(res => {
+                        if (res.ok) {
+                            const card = document.querySelector(`.card[data-uuid="${uuid}"]`);
+                            if (card) {
+                                card.style.transition = 'all 350ms var(--md-sys-motion-easing-standard)';
+                                card.style.opacity = '0';
+                                card.style.transform = 'scale(0.85)';
+                                setTimeout(() => {
+                                    card.style.flex = '0 1 0px';
+                                    card.style.width = '0px';
+                                    card.style.marginLeft = '0px';
+                                    card.style.marginRight = '0px';
+                                    card.style.padding = '0px';
+                                }, 150);
+                                setTimeout(() => card.remove(), 350);
+                            }
+                            return true;
+                        }
+                        return false;
+                    });
+            });
+
+            Promise.all(promises).then(results => {
+                const failedCount = results.filter(r => !r).length;
+                if (failedCount > 0) {
+                    alert(`Failed to delete ${failedCount} photos from the album.`);
+                }
+                clearSelection();
+                showToast("Photos deleted from album successfully!");
+            });
+        }
+    }
+}
+
+function showToast(message) {
+    const toast = document.createElement('div');
+    toast.textContent = message;
+    toast.style.position = 'fixed';
+    toast.style.bottom = '24px';
+    toast.style.left = '50%';
+    toast.style.transform = 'translateX(-50%)';
+    toast.style.background = 'var(--md-sys-color-inverse-surface, #313033)';
+    toast.style.color = 'var(--md-sys-color-inverse-on-surface, #f4eff4)';
+    toast.style.padding = '12px 24px';
+    toast.style.borderRadius = '100px';
+    toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+    toast.style.zIndex = '9999';
+    toast.style.fontSize = '0.9rem';
+    toast.style.fontWeight = '500';
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity 0.3s';
+    
+    document.body.appendChild(toast);
+    
+    // trigger reflow
+    void toast.offsetWidth;
+    toast.style.opacity = '1';
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => {
+            toast.remove();
+        }, 300);
+    }, 3000);
+}
+
+// Bind Submit
+document.addEventListener('DOMContentLoaded', () => {
+    const submitBtn = document.getElementById('submit-add-to-album');
+    if (submitBtn) {
+        submitBtn.onclick = function() {
+            const selectedRadio = document.querySelector('input[name="selected-album"]:checked');
+            if (!selectedRadio) {
+                alert("Please select an album.");
+                return;
+            }
+            const albumUuid = selectedRadio.value;
+            if (photosToAdd.length === 0) return;
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Adding...';
+
+            fetch(`/api/albums/${albumUuid}/photos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ photos: photosToAdd })
+            })
+            .then(res => {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Add';
+                if (res.ok) {
+                    // Success
+                    const modal = document.getElementById('album-select-modal');
+                    if (modal) {
+                        modal.classList.remove('active');
+                        setTimeout(() => { modal.style.display = 'none'; }, 300);
+                    }
+                    if (typeof clearSelection === 'function') {
+                        clearSelection();
+                    }
+                    showToast("Photos added to album successfully!");
+                } else {
+                    alert("Failed to add photos to album.");
+                }
+            })
+            .catch(err => {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Add';
+                console.error(err);
+                alert("Error adding photos to album.");
+            });
+        };
+    }
 });
 

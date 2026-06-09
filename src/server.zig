@@ -178,6 +178,111 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
         return;
     }
 
+    if (req.head.method == .GET and std.mem.eql(u8, target, "/albums")) {
+        if (!is_authenticated or username == null) {
+            try req.respond("", .{
+                .status = .see_other,
+                .extra_headers = &.{
+                    .{ .name = "location", .value = "/" },
+                },
+            });
+            return;
+        }
+
+        const html = try server_gallery.generateAlbumsHtml(req_alloc, username orelse "admin");
+        defer std.heap.page_allocator.free(html);
+        try req.respond(html, .{
+            .extra_headers = &.{
+                .{ .name = "content-type", .value = "text/html" },
+                .{ .name = "cache-control", .value = "no-store, no-cache, must-revalidate, proxy-revalidate" },
+                .{ .name = "pragma", .value = "no-cache" },
+                .{ .name = "expires", .value = "0" },
+            },
+        });
+        return;
+    }
+
+    if (req.head.method == .GET and std.mem.startsWith(u8, target, "/albums/")) {
+        if (!is_authenticated or username == null) {
+            try req.respond("", .{
+                .status = .see_other,
+                .extra_headers = &.{
+                    .{ .name = "location", .value = "/" },
+                },
+            });
+            return;
+        }
+
+        const album_uuid = target[8..];
+        if (album_uuid.len == 36) {
+            const html_opt = try server_gallery.generateAlbumDetailHtml(req_alloc, username.?, album_uuid, config.gallery_thumbnail_height);
+            if (html_opt) |html| {
+                defer std.heap.page_allocator.free(html);
+                try req.respond(html, .{
+                    .extra_headers = &.{
+                        .{ .name = "content-type", .value = "text/html" },
+                        .{ .name = "cache-control", .value = "no-store, no-cache, must-revalidate, proxy-revalidate" },
+                        .{ .name = "pragma", .value = "no-cache" },
+                        .{ .name = "expires", .value = "0" },
+                    },
+                });
+                return;
+            }
+        }
+
+        try req.respond("Not Found", .{ .status = .not_found });
+        return;
+    }
+
+    if (req.head.method == .GET and std.mem.eql(u8, target, "/api/albums")) {
+        if (!is_authenticated or username == null) {
+            try req.respond("Unauthorized", .{ .status = .unauthorized });
+            return;
+        }
+        try server_gallery.handleListAlbums(req, req_alloc, username.?);
+        return;
+    }
+
+    if (req.head.method == .POST and std.mem.eql(u8, target, "/api/albums")) {
+        if (!is_authenticated or username == null) {
+            try req.respond("Unauthorized", .{ .status = .unauthorized });
+            return;
+        }
+        try server_gallery.handleCreateAlbum(req, req_alloc, username.?);
+        return;
+    }
+
+    if (req.head.method == .POST and std.mem.startsWith(u8, target, "/api/albums/") and std.mem.endsWith(u8, target, "/photos")) {
+        if (!is_authenticated or username == null) {
+            try req.respond("Unauthorized", .{ .status = .unauthorized });
+            return;
+        }
+        const album_uuid = target[12 .. target.len - 7];
+        if (album_uuid.len == 36) {
+            try server_gallery.handleAddPhotosToAlbum(req, req_alloc, username.?, album_uuid);
+            return;
+        }
+        try req.respond("Bad Request", .{ .status = .bad_request });
+        return;
+    }
+
+    if (req.head.method == .DELETE and std.mem.startsWith(u8, target, "/api/albums/") and std.mem.indexOf(u8, target, "/photos/") != null) {
+        if (!is_authenticated or username == null) {
+            try req.respond("Unauthorized", .{ .status = .unauthorized });
+            return;
+        }
+        if (std.mem.indexOf(u8, target, "/photos/")) |photos_idx| {
+            const album_uuid = target[12..photos_idx];
+            const photo_uuid = target[photos_idx + 8..];
+            if (album_uuid.len == 36 and photo_uuid.len == 36) {
+                try server_gallery.handleRemovePhotoFromAlbum(req, req_alloc, username.?, album_uuid, photo_uuid);
+                return;
+            }
+        }
+        try req.respond("Bad Request", .{ .status = .bad_request });
+        return;
+    }
+
     if (req.head.method == .GET and std.mem.eql(u8, target, "/upload")) {
         if (!is_authenticated or username == null) {
             try req.respond("", .{

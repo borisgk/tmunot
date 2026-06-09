@@ -255,6 +255,24 @@ pub const LocationRecord = struct {
     extension: []const u8,
 };
 
+pub const AlbumRecord = struct {
+    uuid: []const u8,
+    username: []const u8,
+    name: []const u8,
+    description: ?[]const u8,
+    cover_photo_uuid: ?[]const u8,
+    cover_photo_extension: ?[]const u8,
+    photo_count: i32,
+    created_at: []const u8,
+    updated_at: []const u8,
+};
+
+pub const AlbumPhotoRecord = struct {
+    album_uuid: []const u8,
+    photo_uuid: []const u8,
+    added_at: []const u8,
+};
+
 var db_mutex = std.Io.Mutex.init;
 var user_dbs: std.StringHashMap(*sqlite3) = undefined;
 var global_io: ?std.Io = null;
@@ -306,6 +324,14 @@ pub fn getDb(username: []const u8) !*sqlite3 {
     }
     if (err_msg) |msg| sqlite3_free(msg);
 
+    const fk_rc = sqlite3_exec(db, "PRAGMA foreign_keys=ON;", null, null, &err_msg);
+    if (fk_rc != SQLITE_OK) {
+        std.debug.print("Failed to set foreign keys: {s}\n", .{err_msg});
+        if (err_msg) |msg| sqlite3_free(msg);
+        return error.SqliteExecFailed;
+    }
+    if (err_msg) |msg| sqlite3_free(msg);
+
     const create_sql =
         \\CREATE TABLE IF NOT EXISTS photos (
         \\    uuid TEXT PRIMARY KEY,
@@ -322,6 +348,23 @@ pub fn getDb(username: []const u8) !*sqlite3 {
         \\);
         \\CREATE INDEX IF NOT EXISTS idx_photos_username ON photos(username);
         \\CREATE INDEX IF NOT EXISTS idx_photos_shooting_upload ON photos(shooting_date, upload_date);
+        \\CREATE TABLE IF NOT EXISTS albums (
+        \\    uuid TEXT PRIMARY KEY,
+        \\    username TEXT NOT NULL,
+        \\    name TEXT NOT NULL,
+        \\    description TEXT,
+        \\    cover_photo_uuid TEXT REFERENCES photos(uuid) ON DELETE SET NULL,
+        \\    created_at TEXT NOT NULL,
+        \\    updated_at TEXT NOT NULL
+        \\);
+        \\CREATE INDEX IF NOT EXISTS idx_albums_username ON albums(username);
+        \\CREATE TABLE IF NOT EXISTS album_photos (
+        \\    album_uuid TEXT NOT NULL REFERENCES albums(uuid) ON DELETE CASCADE,
+        \\    photo_uuid TEXT NOT NULL REFERENCES photos(uuid) ON DELETE CASCADE,
+        \\    added_at TEXT NOT NULL,
+        \\    PRIMARY KEY (album_uuid, photo_uuid)
+        \\);
+        \\CREATE INDEX IF NOT EXISTS idx_album_photos_photo ON album_photos(photo_uuid);
     ;
 
     const create_exif_sql = comptime blk: {
@@ -656,6 +699,366 @@ pub fn deletePhoto(username: []const u8, uuid: []const u8) !void {
         std.debug.print("Failed to delete photo: {s}\n", .{sqlite3_errmsg(db)});
         return error.SqliteDeleteFailed;
     }
+}
+
+pub fn insertAlbum(record: AlbumRecord) !void {
+    const io = global_io orelse return error.DbNotInitialized;
+    db_mutex.lockUncancelable(io);
+    defer db_mutex.unlock(io);
+
+    const db = try getDb(record.username);
+
+    const insert_sql =
+        \\INSERT INTO albums (uuid, username, name, description, cover_photo_uuid, created_at, updated_at)
+        \\VALUES (?, ?, ?, ?, ?, ?, ?);
+    ;
+
+    var stmt: ?*sqlite3_stmt = null;
+    if (sqlite3_prepare_v2(db, insert_sql, -1, &stmt, null) != SQLITE_OK) {
+        return error.SqlitePrepareFailed;
+    }
+    defer _ = sqlite3_finalize(stmt);
+
+    _ = sqlite3_bind_text(stmt, 1, record.uuid.ptr, @intCast(record.uuid.len), SQLITE_TRANSIENT);
+    _ = sqlite3_bind_text(stmt, 2, record.username.ptr, @intCast(record.username.len), SQLITE_TRANSIENT);
+    _ = sqlite3_bind_text(stmt, 3, record.name.ptr, @intCast(record.name.len), SQLITE_TRANSIENT);
+    if (record.description) |desc| {
+        _ = sqlite3_bind_text(stmt, 4, desc.ptr, @intCast(desc.len), SQLITE_TRANSIENT);
+    } else {
+        _ = sqlite3_bind_null(stmt, 4);
+    }
+    if (record.cover_photo_uuid) |cover| {
+        _ = sqlite3_bind_text(stmt, 5, cover.ptr, @intCast(cover.len), SQLITE_TRANSIENT);
+    } else {
+        _ = sqlite3_bind_null(stmt, 5);
+    }
+    _ = sqlite3_bind_text(stmt, 6, record.created_at.ptr, @intCast(record.created_at.len), SQLITE_TRANSIENT);
+    _ = sqlite3_bind_text(stmt, 7, record.updated_at.ptr, @intCast(record.updated_at.len), SQLITE_TRANSIENT);
+
+    const rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        std.debug.print("Failed to insert album: {s}\n", .{sqlite3_errmsg(db)});
+        return error.SqliteInsertFailed;
+    }
+}
+
+pub fn updateAlbumCover(username: []const u8, album_uuid: []const u8, cover_photo_uuid: []const u8) !void {
+    const io = global_io orelse return error.DbNotInitialized;
+    db_mutex.lockUncancelable(io);
+    defer db_mutex.unlock(io);
+
+    const db = try getDb(username);
+
+    const sql = "UPDATE albums SET cover_photo_uuid = ? WHERE uuid = ?;";
+
+    var stmt: ?*sqlite3_stmt = null;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, null) != SQLITE_OK) return error.SqlitePrepareFailed;
+    defer _ = sqlite3_finalize(stmt);
+
+    _ = sqlite3_bind_text(stmt, 1, cover_photo_uuid.ptr, @intCast(cover_photo_uuid.len), SQLITE_TRANSIENT);
+    _ = sqlite3_bind_text(stmt, 2, album_uuid.ptr, @intCast(album_uuid.len), SQLITE_TRANSIENT);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) return error.SqliteUpdateFailed;
+}
+
+pub fn insertAlbumPhoto(username: []const u8, record: AlbumPhotoRecord) !void {
+    const io = global_io orelse return error.DbNotInitialized;
+    db_mutex.lockUncancelable(io);
+    defer db_mutex.unlock(io);
+
+    const db = try getDb(username);
+
+    const insert_sql =
+        \\INSERT INTO album_photos (album_uuid, photo_uuid, added_at)
+        \\VALUES (?, ?, ?) ON CONFLICT DO NOTHING;
+    ;
+
+    var stmt: ?*sqlite3_stmt = null;
+    if (sqlite3_prepare_v2(db, insert_sql, -1, &stmt, null) != SQLITE_OK) {
+        return error.SqlitePrepareFailed;
+    }
+    defer _ = sqlite3_finalize(stmt);
+
+    _ = sqlite3_bind_text(stmt, 1, record.album_uuid.ptr, @intCast(record.album_uuid.len), SQLITE_TRANSIENT);
+    _ = sqlite3_bind_text(stmt, 2, record.photo_uuid.ptr, @intCast(record.photo_uuid.len), SQLITE_TRANSIENT);
+    _ = sqlite3_bind_text(stmt, 3, record.added_at.ptr, @intCast(record.added_at.len), SQLITE_TRANSIENT);
+
+    const rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        std.debug.print("Failed to insert album photo: {s}\n", .{sqlite3_errmsg(db)});
+        return error.SqliteInsertFailed;
+    }
+    
+    // Auto-set cover photo if it's the first photo
+    const check_sql = "SELECT cover_photo_uuid FROM albums WHERE uuid = ?;";
+    var check_stmt: ?*sqlite3_stmt = null;
+    if (sqlite3_prepare_v2(db, check_sql, -1, &check_stmt, null) == SQLITE_OK) {
+        defer _ = sqlite3_finalize(check_stmt);
+        _ = sqlite3_bind_text(check_stmt, 1, record.album_uuid.ptr, @intCast(record.album_uuid.len), SQLITE_TRANSIENT);
+        if (sqlite3_step(check_stmt) == SQLITE_ROW) {
+            if (sqlite3_column_type(check_stmt, 0) == SQLITE_NULL) {
+                const update_sql = "UPDATE albums SET cover_photo_uuid = ? WHERE uuid = ?;";
+                var update_stmt: ?*sqlite3_stmt = null;
+                if (sqlite3_prepare_v2(db, update_sql, -1, &update_stmt, null) == SQLITE_OK) {
+                    defer _ = sqlite3_finalize(update_stmt);
+                    _ = sqlite3_bind_text(update_stmt, 1, record.photo_uuid.ptr, @intCast(record.photo_uuid.len), SQLITE_TRANSIENT);
+                    _ = sqlite3_bind_text(update_stmt, 2, record.album_uuid.ptr, @intCast(record.album_uuid.len), SQLITE_TRANSIENT);
+                    _ = sqlite3_step(update_stmt);
+                }
+            }
+        }
+    }
+}
+
+pub fn getAlbums(username: []const u8, allocator: std.mem.Allocator) ![]AlbumRecord {
+    const io = global_io orelse return error.DbNotInitialized;
+    db_mutex.lockUncancelable(io);
+    defer db_mutex.unlock(io);
+
+    const db = try getDb(username);
+
+    const sql =
+        \\SELECT 
+        \\    a.uuid, 
+        \\    a.username, 
+        \\    a.name, 
+        \\    a.description, 
+        \\    a.cover_photo_uuid, 
+        \\    p.extension,
+        \\    (SELECT COUNT(*) FROM album_photos ap WHERE ap.album_uuid = a.uuid) AS photo_count,
+        \\    a.created_at, 
+        \\    a.updated_at
+        \\FROM albums a
+        \\LEFT JOIN photos p ON a.cover_photo_uuid = p.uuid
+        \\WHERE a.username = ?
+        \\ORDER BY a.created_at DESC;
+    ;
+
+    var stmt: ?*sqlite3_stmt = null;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, null) != SQLITE_OK) return error.SqlitePrepareFailed;
+    defer _ = sqlite3_finalize(stmt);
+
+    _ = sqlite3_bind_text(stmt, 1, username.ptr, @intCast(username.len), SQLITE_TRANSIENT);
+
+    var list = std.ArrayList(AlbumRecord).empty;
+    errdefer {
+        for (list.items) |r| {
+            allocator.free(r.uuid);
+            allocator.free(r.username);
+            allocator.free(r.name);
+            if (r.description) |desc| allocator.free(desc);
+            if (r.cover_photo_uuid) |cover| allocator.free(cover);
+            if (r.cover_photo_extension) |ext| allocator.free(ext);
+            allocator.free(r.created_at);
+            allocator.free(r.updated_at);
+        }
+        list.deinit(allocator);
+    }
+
+    while (true) {
+        const rc = sqlite3_step(stmt);
+        if (rc == SQLITE_ROW) {
+            const desc_c = sqlite3_column_text(stmt, 3);
+            const cover_c = sqlite3_column_text(stmt, 4);
+            const ext_c = sqlite3_column_text(stmt, 5);
+
+            const desc_len = sqlite3_column_bytes(stmt, 3);
+            const cover_len = sqlite3_column_bytes(stmt, 4);
+            const ext_len = sqlite3_column_bytes(stmt, 5);
+
+            try list.append(allocator, AlbumRecord{
+                .uuid = try allocator.dupe(u8, sqlite3_column_text(stmt, 0)[0..@intCast(sqlite3_column_bytes(stmt, 0))]),
+                .username = try allocator.dupe(u8, sqlite3_column_text(stmt, 1)[0..@intCast(sqlite3_column_bytes(stmt, 1))]),
+                .name = try allocator.dupe(u8, sqlite3_column_text(stmt, 2)[0..@intCast(sqlite3_column_bytes(stmt, 2))]),
+                .description = if (desc_c != null) try allocator.dupe(u8, desc_c[0..@intCast(desc_len)]) else null,
+                .cover_photo_uuid = if (cover_c != null) try allocator.dupe(u8, cover_c[0..@intCast(cover_len)]) else null,
+                .cover_photo_extension = if (ext_c != null) try allocator.dupe(u8, ext_c[0..@intCast(ext_len)]) else null,
+                .photo_count = sqlite3_column_int(stmt, 6),
+                .created_at = try allocator.dupe(u8, sqlite3_column_text(stmt, 7)[0..@intCast(sqlite3_column_bytes(stmt, 7))]),
+                .updated_at = try allocator.dupe(u8, sqlite3_column_text(stmt, 8)[0..@intCast(sqlite3_column_bytes(stmt, 8))]),
+            });
+        } else if (rc == SQLITE_DONE) {
+            break;
+        } else {
+            return error.SqliteSelectFailed;
+        }
+    }
+
+    return try list.toOwnedSlice(allocator);
+}
+
+pub fn getAlbum(username: []const u8, album_uuid: []const u8, allocator: std.mem.Allocator) !?AlbumRecord {
+    const io = global_io orelse return error.DbNotInitialized;
+    db_mutex.lockUncancelable(io);
+    defer db_mutex.unlock(io);
+
+    const db = try getDb(username);
+
+    const sql =
+        \\SELECT 
+        \\    a.uuid, 
+        \\    a.username, 
+        \\    a.name, 
+        \\    a.description, 
+        \\    a.cover_photo_uuid, 
+        \\    p.extension,
+        \\    (SELECT COUNT(*) FROM album_photos ap WHERE ap.album_uuid = a.uuid) AS photo_count,
+        \\    a.created_at, 
+        \\    a.updated_at
+        \\FROM albums a
+        \\LEFT JOIN photos p ON a.cover_photo_uuid = p.uuid
+        \\WHERE a.username = ? AND a.uuid = ?;
+    ;
+
+    var stmt: ?*sqlite3_stmt = null;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, null) != SQLITE_OK) return error.SqlitePrepareFailed;
+    defer _ = sqlite3_finalize(stmt);
+
+    _ = sqlite3_bind_text(stmt, 1, username.ptr, @intCast(username.len), SQLITE_TRANSIENT);
+    _ = sqlite3_bind_text(stmt, 2, album_uuid.ptr, @intCast(album_uuid.len), SQLITE_TRANSIENT);
+
+    const rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+        const desc_c = sqlite3_column_text(stmt, 3);
+        const cover_c = sqlite3_column_text(stmt, 4);
+        const ext_c = sqlite3_column_text(stmt, 5);
+
+        const desc_len = sqlite3_column_bytes(stmt, 3);
+        const cover_len = sqlite3_column_bytes(stmt, 4);
+        const ext_len = sqlite3_column_bytes(stmt, 5);
+
+        return AlbumRecord{
+            .uuid = try allocator.dupe(u8, sqlite3_column_text(stmt, 0)[0..@intCast(sqlite3_column_bytes(stmt, 0))]),
+            .username = try allocator.dupe(u8, sqlite3_column_text(stmt, 1)[0..@intCast(sqlite3_column_bytes(stmt, 1))]),
+            .name = try allocator.dupe(u8, sqlite3_column_text(stmt, 2)[0..@intCast(sqlite3_column_bytes(stmt, 2))]),
+            .description = if (desc_c != null) try allocator.dupe(u8, desc_c[0..@intCast(desc_len)]) else null,
+            .cover_photo_uuid = if (cover_c != null) try allocator.dupe(u8, cover_c[0..@intCast(cover_len)]) else null,
+            .cover_photo_extension = if (ext_c != null) try allocator.dupe(u8, ext_c[0..@intCast(ext_len)]) else null,
+            .photo_count = sqlite3_column_int(stmt, 6),
+            .created_at = try allocator.dupe(u8, sqlite3_column_text(stmt, 7)[0..@intCast(sqlite3_column_bytes(stmt, 7))]),
+            .updated_at = try allocator.dupe(u8, sqlite3_column_text(stmt, 8)[0..@intCast(sqlite3_column_bytes(stmt, 8))]),
+        };
+    } else if (rc == SQLITE_DONE) {
+        return null;
+    } else {
+        return error.SqliteSelectFailed;
+    }
+}
+
+pub fn getAlbumPhotos(username: []const u8, album_uuid: []const u8, allocator: std.mem.Allocator) ![]PhotoRecord {
+    const io = global_io orelse return error.DbNotInitialized;
+    db_mutex.lockUncancelable(io);
+    defer db_mutex.unlock(io);
+
+    const db = try getDb(username);
+
+    const sql = 
+        \\SELECT p.uuid, p.username, p.filename, p.extension, p.year, p.month, p.day, p.shooting_date, p.upload_date, p.width, p.height 
+        \\FROM photos p
+        \\JOIN album_photos ap ON p.uuid = ap.photo_uuid
+        \\WHERE ap.album_uuid = ?
+        \\ORDER BY COALESCE(p.shooting_date, p.upload_date) ASC, p.upload_date ASC;
+    ;
+
+    var stmt: ?*sqlite3_stmt = null;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, null) != SQLITE_OK) return error.SqlitePrepareFailed;
+    defer _ = sqlite3_finalize(stmt);
+
+    _ = sqlite3_bind_text(stmt, 1, album_uuid.ptr, @intCast(album_uuid.len), SQLITE_TRANSIENT);
+
+    var list = std.ArrayList(PhotoRecord).empty;
+    errdefer {
+        for (list.items) |r| {
+            allocator.free(r.uuid);
+            allocator.free(r.username);
+            allocator.free(r.filename);
+            allocator.free(r.extension);
+            allocator.free(r.year);
+            allocator.free(r.month);
+            allocator.free(r.day);
+            if (r.shooting_date) |sd| allocator.free(sd);
+            allocator.free(r.upload_date);
+        }
+        list.deinit(allocator);
+    }
+
+    while (true) {
+        const rc = sqlite3_step(stmt);
+        if (rc == SQLITE_ROW) {
+            const uuid_c = sqlite3_column_text(stmt, 0);
+            const username_c = sqlite3_column_text(stmt, 1);
+            const filename_c = sqlite3_column_text(stmt, 2);
+            const extension_c = sqlite3_column_text(stmt, 3);
+            const year_c = sqlite3_column_text(stmt, 4);
+            const month_c = sqlite3_column_text(stmt, 5);
+            const day_c = sqlite3_column_text(stmt, 6);
+            const shooting_c = sqlite3_column_text(stmt, 7);
+            const upload_c = sqlite3_column_text(stmt, 8);
+
+            const is_null_width = sqlite3_column_type(stmt, 9) == SQLITE_NULL;
+            const width: ?i32 = if (is_null_width) null else sqlite3_column_int(stmt, 9);
+
+            const is_null_height = sqlite3_column_type(stmt, 10) == SQLITE_NULL;
+            const height: ?i32 = if (is_null_height) null else sqlite3_column_int(stmt, 10);
+
+            try list.append(allocator, PhotoRecord{
+                .uuid = try allocator.dupe(u8, uuid_c[0..@intCast(sqlite3_column_bytes(stmt, 0))]),
+                .username = try allocator.dupe(u8, username_c[0..@intCast(sqlite3_column_bytes(stmt, 1))]),
+                .filename = try allocator.dupe(u8, filename_c[0..@intCast(sqlite3_column_bytes(stmt, 2))]),
+                .extension = try allocator.dupe(u8, extension_c[0..@intCast(sqlite3_column_bytes(stmt, 3))]),
+                .year = try allocator.dupe(u8, year_c[0..@intCast(sqlite3_column_bytes(stmt, 4))]),
+                .month = try allocator.dupe(u8, month_c[0..@intCast(sqlite3_column_bytes(stmt, 5))]),
+                .day = try allocator.dupe(u8, day_c[0..@intCast(sqlite3_column_bytes(stmt, 6))]),
+                .shooting_date = if (shooting_c != null) try allocator.dupe(u8, shooting_c[0..@intCast(sqlite3_column_bytes(stmt, 7))]) else null,
+                .upload_date = try allocator.dupe(u8, upload_c[0..@intCast(sqlite3_column_bytes(stmt, 8))]),
+                .width = width,
+                .height = height,
+            });
+        } else if (rc == SQLITE_DONE) {
+            break;
+        } else {
+            return error.SqliteSelectFailed;
+        }
+    }
+
+    return try list.toOwnedSlice(allocator);
+}
+
+pub fn deleteAlbum(username: []const u8, album_uuid: []const u8) !void {
+    const io = global_io orelse return error.DbNotInitialized;
+    db_mutex.lockUncancelable(io);
+    defer db_mutex.unlock(io);
+
+    const db = try getDb(username);
+
+    const delete_sql = "DELETE FROM albums WHERE uuid = ?;";
+
+    var stmt: ?*sqlite3_stmt = null;
+    if (sqlite3_prepare_v2(db, delete_sql, -1, &stmt, null) != SQLITE_OK) return error.SqlitePrepareFailed;
+    defer _ = sqlite3_finalize(stmt);
+
+    _ = sqlite3_bind_text(stmt, 1, album_uuid.ptr, @intCast(album_uuid.len), SQLITE_TRANSIENT);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) return error.SqliteDeleteFailed;
+}
+
+pub fn deleteAlbumPhoto(username: []const u8, album_uuid: []const u8, photo_uuid: []const u8) !void {
+    const io = global_io orelse return error.DbNotInitialized;
+    db_mutex.lockUncancelable(io);
+    defer db_mutex.unlock(io);
+
+    const db = try getDb(username);
+
+    const delete_sql = "DELETE FROM album_photos WHERE album_uuid = ? AND photo_uuid = ?;";
+
+    var stmt: ?*sqlite3_stmt = null;
+    if (sqlite3_prepare_v2(db, delete_sql, -1, &stmt, null) != SQLITE_OK) return error.SqlitePrepareFailed;
+    defer _ = sqlite3_finalize(stmt);
+
+    _ = sqlite3_bind_text(stmt, 1, album_uuid.ptr, @intCast(album_uuid.len), SQLITE_TRANSIENT);
+    _ = sqlite3_bind_text(stmt, 2, photo_uuid.ptr, @intCast(photo_uuid.len), SQLITE_TRANSIENT);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) return error.SqliteDeleteFailed;
 }
 
 

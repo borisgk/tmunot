@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Albums - Image Gallery</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="preload" href="/fonts/RobotoFlex-VariableFont.woff2" as="font" type="font/woff2" crossorigin>
+</head>
+<body class="gallery-body">
+    <header class="md-top-app-bar" id="app-bar">
+        <div class="md-top-app-bar__left" id="app-bar-left">
+            <a href="/" class="md-header-logout-icon-btn" title="Gallery" style="text-decoration: none;">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+            </a>
+        </div>
+        <span class="md-top-app-bar__title" id="app-bar-title">Albums</span>
+        <div class="md-top-app-bar__actions" id="app-bar-actions">
+<!-- GALLERY_LOGOUT -->
+        </div>
+    </header>
+
+    <main class="gallery-container">
+        <div class="gallery" id="albums-grid" style="display: flex; flex-wrap: wrap; gap: 8px;">
+<!-- ALBUMS_CONTENT -->
+        </div>
+    </main>
+
+    <button class="md-fab" onclick="openCreateAlbumModal()" title="Create Album">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+    </button>
+
+    <div id="create-album-modal" class="lightbox" onclick="closeCreateAlbumModal(event)">
+        <div class="modal-content" style="background: var(--md-sys-color-surface-container); padding: 24px; border-radius: 28px; width: 400px; max-width: 90%; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
+            <h2 style="margin-top: 0; color: var(--md-sys-color-on-surface);">Create New Album</h2>
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; margin-bottom: 4px; font-weight: 500; color: var(--md-sys-color-on-surface);">Name</label>
+                <input type="text" id="album-name" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline); background: transparent; color: var(--md-sys-color-on-surface); box-sizing: border-box;" placeholder="Album Name">
+            </div>
+            <div style="margin-bottom: 24px;">
+                <label style="display: block; margin-bottom: 4px; font-weight: 500; color: var(--md-sys-color-on-surface);">Description</label>
+                <textarea id="album-desc" rows="3" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline); background: transparent; color: var(--md-sys-color-on-surface); box-sizing: border-box;" placeholder="Optional description"></textarea>
+            </div>
+            <div style="text-align: right;">
+                <button class="md-menu-item" style="display: inline-block; width: auto; margin-right: 8px; background: transparent; border: none; cursor: pointer; color: var(--md-sys-color-on-surface);" onclick="closeCreateAlbumModal({target:{id:'create-album-modal'}})">Cancel</button>
+                <button onclick="submitCreateAlbum()" style="background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer;">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/script.js"></script>
+</body>
+</html>
