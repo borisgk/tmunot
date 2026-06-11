@@ -1,6 +1,12 @@
 const std = @import("std");
+
+pub const Record = struct {
+    a: u32,
+    b: bool,
+};
+
 pub fn main() void {
-    var prng = std.Random.DefaultPrng.init(0);
-    _ = prng;
-    std.debug.print("ok\n", .{});
+    inline for (comptime std.meta.fieldNames(Record)) |name| {
+        std.debug.print("field: {s}\n", .{name});
+    }
 }
