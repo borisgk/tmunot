@@ -166,9 +166,9 @@ pub fn getDb(username: []const u8) !*sqlite3 {
     const create_exif_sql = comptime blk: {
         @setEvalBranchQuota(10000);
         var sql: []const u8 = "CREATE TABLE IF NOT EXISTS photo_exif (uuid TEXT PRIMARY KEY REFERENCES photos(uuid) ON DELETE CASCADE";
-        for (std.meta.fields(photos.PhotoExifRecord)) |field| {
-            if (std.mem.eql(u8, field.name, "uuid")) continue;
-            sql = sql ++ ", \"" ++ field.name ++ "\" TEXT";
+        for (std.meta.fieldNames(photos.PhotoExifRecord)) |field_name| {
+            if (std.mem.eql(u8, field_name, "uuid")) continue;
+            sql = sql ++ ", \"" ++ field_name ++ "\" TEXT";
         }
         sql = sql ++ ");\nCREATE INDEX IF NOT EXISTS idx_photo_exif_make ON photo_exif(\"Make\");\nCREATE INDEX IF NOT EXISTS idx_photo_exif_model ON photo_exif(\"Model\");\x00";
         break :blk sql;

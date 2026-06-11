@@ -264,24 +264,24 @@ pub fn extractFullExifFromBuffer(allocator: std.mem.Allocator, buffer: []const u
                         if (val_len == 0) continue;
                         const val_str = value_buf[0..val_len];
 
-                        inline for (std.meta.fields(db.PhotoExifRecord)) |field| {
-                            if (!comptime std.mem.eql(u8, field.name, "uuid")) {
-                                if (std.mem.eql(u8, tag_name, field.name)) {
-                                    if (@field(record, field.name) == null) {
+                        inline for (comptime std.meta.fieldNames(db.PhotoExifRecord)) |field_name| {
+                            if (!comptime std.mem.eql(u8, field_name, "uuid")) {
+                                if (std.mem.eql(u8, tag_name, field_name)) {
+                                    if (@field(record, field_name) == null) {
                                         var final_val = try allocator.dupe(u8, val_str);
                                         
                                         // SQLite compatible Date/Time conversion (YYYY:MM:DD -> YYYY-MM-DD)
-                                        if (comptime std.mem.eql(u8, field.name, "DateTime") or 
-                                            std.mem.eql(u8, field.name, "DateTimeOriginal") or 
-                                            std.mem.eql(u8, field.name, "DateTimeDigitized") or
-                                            std.mem.eql(u8, field.name, "GPSDateStamp")) 
+                                        if (comptime std.mem.eql(u8, field_name, "DateTime") or 
+                                            std.mem.eql(u8, field_name, "DateTimeOriginal") or 
+                                            std.mem.eql(u8, field_name, "DateTimeDigitized") or
+                                            std.mem.eql(u8, field_name, "GPSDateStamp")) 
                                         {
                                             if (final_val.len >= 10) {
                                                 if (final_val[4] == ':') final_val[4] = '-';
                                                 if (final_val[7] == ':') final_val[7] = '-';
                                             }
                                         }
-                                        @field(record, field.name) = final_val;
+                                        @field(record, field_name) = final_val;
                                     }
                                 }
                             }

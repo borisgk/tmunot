@@ -492,9 +492,9 @@ pub fn processJob(job: *queue.FileJob) void {
     };
     defer {
         @setEvalBranchQuota(10000);
-        inline for (std.meta.fields(db.PhotoExifRecord)) |field| {
-            if (comptime !std.mem.eql(u8, field.name, "uuid")) {
-                if (@field(full_exif_record, field.name)) |v| job.allocator.free(v);
+        inline for (comptime std.meta.fieldNames(db.PhotoExifRecord)) |field_name| {
+            if (comptime !std.mem.eql(u8, field_name, "uuid")) {
+                if (@field(full_exif_record, field_name)) |v| job.allocator.free(v);
             }
         }
         job.allocator.free(full_exif_record.uuid);

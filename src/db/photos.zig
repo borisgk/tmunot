@@ -412,9 +412,9 @@ pub fn insertPhotoExif(username: []const u8, record: PhotoExifRecord) !void {
         @setEvalBranchQuota(10000);
         var cols: []const u8 = "INSERT INTO photo_exif (uuid";
         var vals: []const u8 = "VALUES (?";
-        for (std.meta.fields(PhotoExifRecord)) |field| {
-            if (std.mem.eql(u8, field.name, "uuid")) continue;
-            cols = cols ++ ", \"" ++ field.name ++ "\"";
+        for (std.meta.fieldNames(PhotoExifRecord)) |field_name| {
+            if (std.mem.eql(u8, field_name, "uuid")) continue;
+            cols = cols ++ ", \"" ++ field_name ++ "\"";
             vals = vals ++ ", ?";
         }
         break :blk cols ++ ") " ++ vals ++ ");";
@@ -430,9 +430,9 @@ pub fn insertPhotoExif(username: []const u8, record: PhotoExifRecord) !void {
     _ = core.sqlite3_bind_text(stmt, 1, record.uuid.ptr, @intCast(record.uuid.len), core.SQLITE_TRANSIENT);
     
     var idx: c_int = 2;
-    inline for (std.meta.fields(PhotoExifRecord)) |field| {
-        if (!comptime std.mem.eql(u8, field.name, "uuid")) {
-            const val_opt = @field(record, field.name);
+    inline for (comptime std.meta.fieldNames(PhotoExifRecord)) |field_name| {
+        if (!comptime std.mem.eql(u8, field_name, "uuid")) {
+            const val_opt = @field(record, field_name);
             if (val_opt) |val| {
                 _ = core.sqlite3_bind_text(stmt, idx, val.ptr, @intCast(val.len), core.SQLITE_TRANSIENT);
             } else {
