@@ -437,3 +437,24 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
 
     try req.respond("Not Found", .{ .status = .not_found });
 }
+
+test "decodeUrl" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const t1 = try decodeUrl(allocator, "hello+world");
+    defer allocator.free(t1);
+    try testing.expectEqualStrings("hello world", t1);
+
+    const t2 = try decodeUrl(allocator, "hello%20world");
+    defer allocator.free(t2);
+    try testing.expectEqualStrings("hello world", t2);
+
+    const t3 = try decodeUrl(allocator, "a%2Fb%3Fc%3Dd");
+    defer allocator.free(t3);
+    try testing.expectEqualStrings("a/b?c=d", t3);
+
+    const t4 = try decodeUrl(allocator, "invalid%2Ghex");
+    defer allocator.free(t4);
+    try testing.expectEqualStrings("invalid%2Ghex", t4);
+}

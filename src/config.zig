@@ -114,3 +114,54 @@ pub fn parseConfigJson(allocator: std.mem.Allocator, json: []const u8) !Config {
         .outputs = outputs,
     };
 }
+
+test "parseConfigJson" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const json = 
+        \\{
+        \\    "backend": "vips",
+        \\    "quality": 85,
+        \\    "gallery_thumbnail_height": 200,
+        \\    "input_directory": "in",
+        \\    "db_dir": "db",
+        \\    "originals_dir": "orig",
+        \\    "previews_dir": "prev",
+        \\    "thumbnails_dir": "thumb",
+        \\    "hover_previews_dir": "hover",
+        \\    "outputs": [
+        \\        { "name": "small", "target_width": 300, "target_height": 300 },
+        \\        { "name": "large", "target_width": 1200, "target_height": 1200 }
+        \\    ]
+        \\}
+    ;
+
+    const config = try parseConfigJson(allocator, json);
+    
+    // Test simple values
+    try testing.expectEqualStrings("vips", config.backend);
+    try testing.expectEqual(@as(i32, 85), config.quality);
+    try testing.expectEqual(@as(i32, 200), config.gallery_thumbnail_height);
+    try testing.expectEqualStrings("in", config.input_directory);
+
+    // Test sorting of outputs (largest target_height first)
+    try testing.expectEqual(@as(usize, 2), config.outputs.len);
+    try testing.expectEqualStrings("large", config.outputs[0].name);
+    try testing.expectEqual(@as(i32, 1200), config.outputs[0].target_height);
+    try testing.expectEqualStrings("small", config.outputs[1].name);
+    try testing.expectEqual(@as(i32, 300), config.outputs[1].target_height);
+
+    // Free all allocated memory
+    allocator.free(config.backend);
+    allocator.free(config.input_directory);
+    allocator.free(config.db_dir);
+    allocator.free(config.originals_dir);
+    allocator.free(config.previews_dir);
+    allocator.free(config.thumbnails_dir);
+    allocator.free(config.hover_previews_dir);
+    for (config.outputs) |out| {
+        allocator.free(out.name);
+    }
+    allocator.free(config.outputs);
+}
