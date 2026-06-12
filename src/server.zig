@@ -334,25 +334,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
         return;
     }
 
-    if (req.head.method == .GET and std.mem.eql(u8, target, "/admin")) {
-        if (!is_authenticated or username == null) {
-            try req.respond("", .{
-                .status = .see_other,
-                .extra_headers = &.{
-                    .{ .name = "location", .value = "/" },
-                },
-            });
-            return;
-        }
 
-        try req.respond(@embedFile("admin_gen.html"), .{
-            .extra_headers = &.{
-                .{ .name = "content-type", .value = "text/html" },
-                .{ .name = "cache-control", .value = "no-cache, no-store, must-revalidate" },
-            },
-        });
-        return;
-    }
 
     if (req.head.method == .GET and std.mem.eql(u8, target, "/users")) {
         if (!is_authenticated or username == null) {
