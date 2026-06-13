@@ -284,6 +284,32 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
         return;
     }
 
+    if (req.head.method == .GET and std.mem.startsWith(u8, target, "/api/photos/") and std.mem.endsWith(u8, target, "/metadata")) {
+        if (!is_authenticated or username == null) {
+            try req.respond("Unauthorized", .{ .status = .unauthorized });
+            return;
+        }
+        const photo_uuid = target[12 .. target.len - 9];
+        if (photo_uuid.len == 36) {
+            const exif_opt = try db.getPhotoExif(username.?, photo_uuid, req_alloc);
+            if (exif_opt) |exif| {
+                var aw: std.Io.Writer.Allocating = .init(req_alloc);
+                try std.json.Stringify.value(exif, .{}, &aw.writer);
+                try req.respond(aw.written(), .{
+                    .extra_headers = &.{
+                        .{ .name = "content-type", .value = "application/json" },
+                    },
+                });
+                return;
+            } else {
+                try req.respond("Not Found", .{ .status = .not_found });
+                return;
+            }
+        }
+        try req.respond("Bad Request", .{ .status = .bad_request });
+        return;
+    }
+
     if (req.head.method == .GET and std.mem.eql(u8, target, "/upload")) {
         if (!is_authenticated or username == null) {
             try req.respond("", .{

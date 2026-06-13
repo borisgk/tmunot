@@ -147,6 +147,11 @@ function toggleMenu(e, uuid, ext) {
         document.body.removeChild(a);
         closeMenu();
     };
+    document.getElementById('menu-metadata').onclick = function(event) {
+        event.stopPropagation();
+        openMetadataModal(uuid);
+        closeMenu();
+    };
     
     document.getElementById('menu-delete').onclick = function(event) {
         event.stopPropagation();
@@ -831,3 +836,70 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+
+function openMetadataModal(uuid) {
+    const modal = document.getElementById('metadata-modal');
+    const list = document.getElementById('metadata-list');
+    list.innerHTML = '<div style="color: var(--md-sys-color-on-surface-variant); padding: 16px; text-align: center;">Loading...</div>';
+    modal.style.display = 'flex';
+    requestAnimationFrame(() => {
+        modal.classList.add('visible');
+    });
+
+    fetch(`/api/photos/${uuid}/metadata`)
+        .then(response => {
+            if (!response.ok) {
+                if (response.status === 404) {
+                    throw new Error("Metadata not found.");
+                }
+                throw new Error("Error fetching metadata.");
+            }
+            return response.json();
+        })
+        .then(data => {
+            list.innerHTML = '';
+            let hasData = false;
+            for (const [key, value] of Object.entries(data)) {
+                if (value !== null && value !== undefined && value !== "") {
+                    hasData = true;
+                    const item = document.createElement('div');
+                    item.style.display = 'flex';
+                    item.style.justifyContent = 'space-between';
+                    item.style.padding = '8px 12px';
+                    item.style.borderBottom = '1px solid var(--md-sys-color-outline-variant)';
+                    
+                    const keySpan = document.createElement('span');
+                    keySpan.style.fontWeight = '500';
+                    keySpan.style.color = 'var(--md-sys-color-on-surface)';
+                    keySpan.textContent = key;
+                    
+                    const valSpan = document.createElement('span');
+                    valSpan.style.color = 'var(--md-sys-color-on-surface-variant)';
+                    valSpan.style.wordBreak = 'break-all';
+                    valSpan.style.textAlign = 'right';
+                    valSpan.style.maxWidth = '60%';
+                    valSpan.textContent = value;
+                    
+                    item.appendChild(keySpan);
+                    item.appendChild(valSpan);
+                    list.appendChild(item);
+                }
+            }
+            if (!hasData) {
+                list.innerHTML = '<div style="color: var(--md-sys-color-on-surface-variant); padding: 16px; text-align: center;">No metadata available.</div>';
+            }
+        })
+        .catch(err => {
+            list.innerHTML = `<div style="color: var(--md-sys-color-error); padding: 16px; text-align: center;">${err.message}</div>`;
+        });
+}
+
+function closeMetadataModal(e) {
+    if (e.target.id === 'metadata-modal' || e.target.closest('#metadata-modal') === null) {
+        const modal = document.getElementById('metadata-modal');
+        modal.classList.remove('visible');
+        setTimeout(() => {
+            modal.style.display = 'none';
+        }, 200);
+    }
+}
