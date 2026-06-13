@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvips-dev libexif-dev libsqlite3-dev python3
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: latest
+
+      - name: Build
+        run: zig build -Doptimize=ReleaseSafe
+
+      - name: Package Release
+        run: |
+          tar -czvf tmunot-linux-x86_64.tar.gz -C zig-out/bin tmunot
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: tmunot-linux-x86_64.tar.gz
