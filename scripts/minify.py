@@ -129,6 +129,16 @@ def main():
     min_css = minify_css(css)
     min_js = minify_js(js)
     
+    # Read version from build.zig.zon
+    version = "0.0.0"
+    zon_path = os.path.join(base_dir, 'build.zig.zon')
+    if os.path.exists(zon_path):
+        with open(zon_path, 'r', encoding='utf-8') as f:
+            zon_content = f.read()
+            match = re.search(r'\.version\s*=\s*"([^"]+)"', zon_content)
+            if match:
+                version = match.group(1)
+    
     # Process index.html
     with open(os.path.join(src_dir, 'index.html'), 'r', encoding='utf-8') as f:
         index_html = f.read()
@@ -139,6 +149,7 @@ def main():
     js_replacement = f'<script>{min_js}</script>'
     index_html = re.sub(r'<script\s+src="/script\.js"[^>]*>\s*</script>', js_replacement, index_html)
     
+    index_html = index_html.replace('<!-- APP_VERSION -->', version)
     with open(os.path.join(src_dir, 'index_gen.html'), 'w', encoding='utf-8') as f:
         f.write(index_html)
         
@@ -147,6 +158,7 @@ def main():
         login_html = f.read()
         
     login_html = re.sub(r'<link\s+rel="stylesheet"\s+href="/styles\.css"[^>]*>', css_replacement, login_html)
+    login_html = login_html.replace('<!-- APP_VERSION -->', version)
     
     with open(os.path.join(src_dir, 'login_gen.html'), 'w', encoding='utf-8') as f:
         f.write(login_html)
@@ -162,6 +174,7 @@ def main():
         albums_js_replacement = f'<script>{min_js}</script>'
         albums_html = re.sub(r'<script\s+src="/script\.js"[^>]*>\s*</script>', albums_js_replacement, albums_html)
         
+        albums_html = albums_html.replace('<!-- APP_VERSION -->', version)
         with open(os.path.join(src_dir, 'albums_gen.html'), 'w', encoding='utf-8') as f:
             f.write(albums_html)
 
@@ -176,6 +189,7 @@ def main():
         album_detail_js_replacement = f'<script>{min_js}</script>'
         album_detail_html = re.sub(r'<script\s+src="/script\.js"[^>]*>\s*</script>', album_detail_js_replacement, album_detail_html)
         
+        album_detail_html = album_detail_html.replace('<!-- APP_VERSION -->', version)
         with open(os.path.join(src_dir, 'album_detail_gen.html'), 'w', encoding='utf-8') as f:
             f.write(album_detail_html)
 
@@ -203,6 +217,7 @@ def main():
             upload_js_replacement = f'<script>{min_upload_js}</script>'
             upload_html = re.sub(r'<script\s+src="/upload\.js"[^>]*>\s*</script>', upload_js_replacement, upload_html)
         
+        upload_html = upload_html.replace('<!-- APP_VERSION -->', version)
         with open(os.path.join(src_dir, 'upload_gen.html'), 'w', encoding='utf-8') as f:
             f.write(upload_html)
             
@@ -222,6 +237,7 @@ def main():
             admin_js_replacement = f'<script>{min_admin_js}</script>'
             admin_html = re.sub(r'<script\s+src="/admin\.js"[^>]*>\s*</script>', admin_js_replacement, admin_html)
             
+        admin_html = admin_html.replace('<!-- APP_VERSION -->', version)
         with open(os.path.join(src_dir, 'admin_gen.html'), 'w', encoding='utf-8') as f:
             f.write(admin_html)
             
@@ -241,6 +257,7 @@ def main():
             users_js_replacement = f'<script>{min_users_js}</script>'
             users_html = re.sub(r'<script\s+src="/users\.js"[^>]*>\s*</script>', users_js_replacement, users_html)
             
+        users_html = users_html.replace('<!-- APP_VERSION -->', version)
         with open(os.path.join(src_dir, 'users_gen.html'), 'w', encoding='utf-8') as f:
             f.write(users_html)
         
