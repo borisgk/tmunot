@@ -291,10 +291,18 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
         }
         const photo_uuid = target[12 .. target.len - 9];
         if (photo_uuid.len == 36) {
-            const exif_opt = try db.getPhotoExif(username.?, photo_uuid, req_alloc);
-            if (exif_opt) |exif| {
+            if (try db.getPhotoExif(username.?, photo_uuid, req_alloc)) |exif| {
                 var aw: std.Io.Writer.Allocating = .init(req_alloc);
                 try std.json.Stringify.value(exif, .{}, &aw.writer);
+                try req.respond(aw.written(), .{
+                    .extra_headers = &.{
+                        .{ .name = "content-type", .value = "application/json" },
+                    },
+                });
+                return;
+            } else if (try db.getVideoMetadata(username.?, photo_uuid, req_alloc)) |video_meta| {
+                var aw: std.Io.Writer.Allocating = .init(req_alloc);
+                try std.json.Stringify.value(video_meta, .{}, &aw.writer);
                 try req.respond(aw.written(), .{
                     .extra_headers = &.{
                         .{ .name = "content-type", .value = "application/json" },

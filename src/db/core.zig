@@ -174,6 +174,17 @@ pub fn getDb(username: []const u8) !*sqlite3 {
         break :blk sql;
     };
 
+    const create_video_meta_sql = comptime blk: {
+        @setEvalBranchQuota(10000);
+        var sql: []const u8 = "CREATE TABLE IF NOT EXISTS video_metadata (uuid TEXT PRIMARY KEY REFERENCES photos(uuid) ON DELETE CASCADE";
+        for (std.meta.fieldNames(photos.VideoMetadataRecord)) |field_name| {
+            if (std.mem.eql(u8, field_name, "uuid")) continue;
+            sql = sql ++ ", \"" ++ field_name ++ "\" TEXT";
+        }
+        sql = sql ++ ");\x00";
+        break :blk sql;
+    };
+
     const create_rc = sqlite3_exec(db, create_sql, null, null, &err_msg);
     if (create_rc != SQLITE_OK) {
         std.debug.print("Failed to run migrations: {s}\n", .{err_msg});
@@ -185,6 +196,14 @@ pub fn getDb(username: []const u8) !*sqlite3 {
     const create_exif_rc = sqlite3_exec(db, create_exif_sql.ptr, null, null, &err_msg);
     if (create_exif_rc != SQLITE_OK) {
         std.debug.print("Failed to run exif migrations: {s}\n", .{err_msg});
+        if (err_msg) |msg| sqlite3_free(msg);
+        return error.SqliteExecFailed;
+    }
+    if (err_msg) |msg| sqlite3_free(msg);
+
+    const create_video_meta_rc = sqlite3_exec(db, create_video_meta_sql.ptr, null, null, &err_msg);
+    if (create_video_meta_rc != SQLITE_OK) {
+        std.debug.print("Failed to run video meta migrations: {s}\n", .{err_msg});
         if (err_msg) |msg| sqlite3_free(msg);
         return error.SqliteExecFailed;
     }
