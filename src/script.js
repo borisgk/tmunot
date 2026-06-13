@@ -155,6 +155,12 @@ function toggleMenu(e, uuid, ext) {
         closeMenu();
     };
     
+    document.getElementById('menu-change-date').onclick = function(event) {
+        event.stopPropagation();
+        openChangeDateModal(uuid);
+        closeMenu();
+    };
+    
     document.getElementById('menu-delete').onclick = function(event) {
         event.stopPropagation();
         if (confirm("Are you sure you want to delete this photo?")) {
@@ -840,6 +846,68 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 let currentMetadataUuid = null;
+
+let currentChangeDateUuid = null;
+
+function openChangeDateModal(uuid) {
+    currentChangeDateUuid = uuid;
+    
+    let dateStr = "";
+    const card = document.querySelector(`.card[data-uuid="${uuid}"]`);
+    if (card && card.dataset.date) {
+        let rawDate = card.dataset.date.trim();
+        if (rawDate.length >= 10 && rawDate[4] === ':' && rawDate[7] === ':') {
+            rawDate = rawDate.substring(0, 4) + '-' + rawDate.substring(5, 7) + '-' + rawDate.substring(8);
+        }
+        dateStr = rawDate.replace(' ', 'T');
+    }
+    document.getElementById('change-date-input').value = dateStr;
+    
+    const modal = document.getElementById('change-date-modal');
+    modal.style.display = 'flex';
+    void modal.offsetWidth;
+    modal.classList.add('active');
+}
+
+function closeChangeDateModal(event) {
+    if (event.target.id === 'change-date-modal') {
+        const modal = document.getElementById('change-date-modal');
+        modal.classList.remove('active');
+        setTimeout(() => {
+            modal.style.display = 'none';
+        }, 200);
+        currentChangeDateUuid = null;
+    }
+}
+
+function submitChangeDate() {
+    if (!currentChangeDateUuid) return;
+    let dateInput = document.getElementById('change-date-input').value;
+    if (!dateInput) {
+        alert('Please select a date and time.');
+        return;
+    }
+    if (dateInput.length === 16) {
+        dateInput += ":00";
+    }
+    fetch(`/api/photos/${currentChangeDateUuid}/date`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: dateInput })
+    })
+    .then(response => {
+        if (response.ok) {
+            closeChangeDateModal({ target: { id: 'change-date-modal' } });
+            window.location.reload();
+        } else {
+            alert('Failed to change date.');
+        }
+    })
+    .catch(error => {
+        console.error('Error changing date:', error);
+        alert('Failed to change date.');
+    });
+}
 
 function openMetadataModal(uuid) {
     currentMetadataUuid = uuid;

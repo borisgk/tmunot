@@ -22,6 +22,7 @@ pub const getPhotoExif = photos.getPhotoExif;
 pub const insertVideoMetadata = photos.insertVideoMetadata;
 pub const getVideoMetadata = photos.getVideoMetadata;
 pub const deletePhoto = photos.deletePhoto;
+pub const updatePhotoDate = photos.updatePhotoDate;
 
 // From albums
 pub const AlbumRecord = albums.AlbumRecord;

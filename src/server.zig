@@ -13,6 +13,29 @@ const server_upload = @import("server/upload.zig");
 const server_admin = @import("server/admin.zig");
 const server_profile = @import("server/profile.zig");
 
+extern "c" fn rename(old: [*c]const u8, new: [*c]const u8) c_int;
+extern "c" fn mkdir(path: [*c]const u8, mode: c_uint) c_int;
+
+fn makeDirPathSync(allocator: std.mem.Allocator, target_dir: []const u8) !void {
+    if (target_dir.len == 0) return;
+    var it = std.mem.splitScalar(u8, target_dir, '/');
+    var current_path = std.ArrayList(u8).empty;
+    defer current_path.deinit(allocator);
+    if (target_dir[0] == '/') {
+        try current_path.append(allocator, '/');
+    }
+    while (it.next()) |component| {
+        if (component.len == 0) continue;
+        if (current_path.items.len > 0 and current_path.items[current_path.items.len - 1] != '/') {
+            try current_path.append(allocator, '/');
+        }
+        try current_path.appendSlice(allocator, component);
+        const path_c = try std.fmt.allocPrintSentinel(allocator, "{s}", .{current_path.items}, 0);
+        defer allocator.free(path_c);
+        _ = mkdir(path_c.ptr, 0o777);
+    }
+}
+
 // Helper to decode URL-encoded string (modifies in place, returns slice, or allocates)
 pub fn decodeUrl(allocator: std.mem.Allocator, encoded: []const u8) ![]u8 {
     var out = try allocator.alloc(u8, encoded.len);
@@ -366,6 +389,102 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
                     }
                     try db.insertPhotoExif(loc.username, exif_record);
                 }
+                try req.respond("", .{ .status = .ok });
+                return;
+            }
+        }
+        try req.respond("Bad Request", .{ .status = .bad_request });
+        return;
+    }
+
+    if (req.head.method == .PUT and std.mem.startsWith(u8, target, "/api/photos/") and std.mem.endsWith(u8, target, "/date")) {
+        if (!is_authenticated or username == null) {
+            try req.respond("Unauthorized", .{ .status = .unauthorized });
+            return;
+        }
+        const photo_uuid = target[12 .. target.len - 5];
+        if (photo_uuid.len == 36) {
+            var buf: [1024]u8 = undefined;
+            var r = req.readerExpectNone(&buf);
+            const body_str = r.allocRemaining(req_alloc, .limited(4 * 1024)) catch |err| {
+                std.debug.print("Failed to read body: {}\n", .{err});
+                try req.respond("Bad Request", .{ .status = .bad_request });
+                return;
+            };
+            defer req_alloc.free(body_str);
+
+            const ChangeDateRequest = struct {
+                date: []const u8,
+            };
+
+            const parsed = std.json.parseFromSlice(
+                ChangeDateRequest,
+                req_alloc,
+                body_str,
+                .{ .ignore_unknown_fields = true },
+            ) catch |err| {
+                std.debug.print("JSON parse error: {}\n", .{err});
+                try req.respond("Invalid JSON", .{ .status = .bad_request });
+                return;
+            };
+            defer parsed.deinit();
+
+            const new_date_str = parsed.value.date;
+            if (new_date_str.len < 19) {
+                try req.respond("Bad Request: invalid date", .{ .status = .bad_request });
+                return;
+            }
+
+            const new_year = new_date_str[0..4];
+            const new_month = new_date_str[5..7];
+            const new_day = new_date_str[8..10];
+            const new_shooting_date = try std.fmt.allocPrint(req_alloc, "{s} {s}", .{ new_date_str[0..10], new_date_str[11..19] });
+            defer req_alloc.free(new_shooting_date);
+
+            if (try db.getPhotoLocation(photo_uuid, req_alloc)) |loc| {
+                const is_video = std.mem.eql(u8, loc.extension, "mp4") or std.mem.eql(u8, loc.extension, "mov") or std.mem.eql(u8, loc.extension, "m4v") or std.mem.eql(u8, loc.extension, "webm") or std.mem.eql(u8, loc.extension, "avi");
+
+                if (!std.mem.eql(u8, loc.year, new_year) or !std.mem.eql(u8, loc.month, new_month)) {
+                    // Relocate original
+                    const old_orig_path = try std.fmt.allocPrintSentinel(req_alloc, "{s}/{s}/{s}/{s}/{s}.{s}", .{ config.originals_dir, loc.username, loc.year, loc.month, photo_uuid, loc.extension }, 0);
+                    const new_orig_dir = try std.fmt.allocPrint(req_alloc, "{s}/{s}/{s}/{s}", .{ config.originals_dir, loc.username, new_year, new_month });
+                    const new_orig_path = try std.fmt.allocPrintSentinel(req_alloc, "{s}/{s}.{s}", .{ new_orig_dir, photo_uuid, loc.extension }, 0);
+                    
+                    makeDirPathSync(req_alloc, new_orig_dir) catch {};
+                    _ = rename(old_orig_path.ptr, new_orig_path.ptr);
+
+                    if (is_video) {
+                        // thumbnail (.jpg)
+                        const old_thumb = try std.fmt.allocPrintSentinel(req_alloc, "{s}/{s}/{s}/{s}/{s}.jpg", .{ config.thumbnails_dir, loc.username, loc.year, loc.month, photo_uuid }, 0);
+                        const new_thumb_dir = try std.fmt.allocPrint(req_alloc, "{s}/{s}/{s}/{s}", .{ config.thumbnails_dir, loc.username, new_year, new_month });
+                        const new_thumb = try std.fmt.allocPrintSentinel(req_alloc, "{s}/{s}.jpg", .{ new_thumb_dir, photo_uuid }, 0);
+                        makeDirPathSync(req_alloc, new_thumb_dir) catch {};
+                        _ = rename(old_thumb.ptr, new_thumb.ptr);
+
+                        // hover preview (.mp4)
+                        const old_hover = try std.fmt.allocPrintSentinel(req_alloc, "{s}/{s}/{s}/{s}/{s}.mp4", .{ config.hover_previews_dir, loc.username, loc.year, loc.month, photo_uuid }, 0);
+                        const new_hover_dir = try std.fmt.allocPrint(req_alloc, "{s}/{s}/{s}/{s}", .{ config.hover_previews_dir, loc.username, new_year, new_month });
+                        const new_hover = try std.fmt.allocPrintSentinel(req_alloc, "{s}/{s}.mp4", .{ new_hover_dir, photo_uuid }, 0);
+                        makeDirPathSync(req_alloc, new_hover_dir) catch {};
+                        _ = rename(old_hover.ptr, new_hover.ptr);
+                    } else {
+                        // preview
+                        const old_prev = try std.fmt.allocPrintSentinel(req_alloc, "{s}/{s}/{s}/{s}/{s}.{s}", .{ config.previews_dir, loc.username, loc.year, loc.month, photo_uuid, loc.extension }, 0);
+                        const new_prev_dir = try std.fmt.allocPrint(req_alloc, "{s}/{s}/{s}/{s}", .{ config.previews_dir, loc.username, new_year, new_month });
+                        const new_prev = try std.fmt.allocPrintSentinel(req_alloc, "{s}/{s}.{s}", .{ new_prev_dir, photo_uuid, loc.extension }, 0);
+                        makeDirPathSync(req_alloc, new_prev_dir) catch {};
+                        _ = rename(old_prev.ptr, new_prev.ptr);
+
+                        // thumbnail
+                        const old_thumb = try std.fmt.allocPrintSentinel(req_alloc, "{s}/{s}/{s}/{s}/{s}.{s}", .{ config.thumbnails_dir, loc.username, loc.year, loc.month, photo_uuid, loc.extension }, 0);
+                        const new_thumb_dir = try std.fmt.allocPrint(req_alloc, "{s}/{s}/{s}/{s}", .{ config.thumbnails_dir, loc.username, new_year, new_month });
+                        const new_thumb = try std.fmt.allocPrintSentinel(req_alloc, "{s}/{s}.{s}", .{ new_thumb_dir, photo_uuid, loc.extension }, 0);
+                        makeDirPathSync(req_alloc, new_thumb_dir) catch {};
+                        _ = rename(old_thumb.ptr, new_thumb.ptr);
+                    }
+                }
+
+                try db.updatePhotoDate(loc.username, photo_uuid, new_year, new_month, new_day, new_shooting_date);
                 try req.respond("", .{ .status = .ok });
                 return;
             }
