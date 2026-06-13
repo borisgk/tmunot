@@ -87,7 +87,7 @@ pub fn handleUpload(
     // Read the multipart body (allowing up to 50MB)
     var buf: [1024]u8 = undefined;
     var r = req.readerExpectNone(&buf);
-    const body = r.allocRemaining(req_alloc, .limited(50 * 1024 * 1024)) catch |err| {
+    const body = r.allocRemaining(req_alloc, .limited(500 * 1024 * 1024)) catch |err| {
         std.debug.print("Error reading body: {}\n", .{err});
         try req.respond("Request body too large or error reading", .{ .status = .payload_too_large });
         return;
