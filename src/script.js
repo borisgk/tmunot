@@ -28,6 +28,8 @@ function openLightbox(src) {
         video.src = src;
         video.controls = true;
         video.autoplay = true;
+        video.preload = 'auto';
+        video.playsInline = true;
         video.style.maxWidth = '90vw';
         video.style.maxHeight = '80vh';
         video.style.borderRadius = '8px';
@@ -843,7 +845,7 @@ function openMetadataModal(uuid) {
     list.innerHTML = '<div style="color: var(--md-sys-color-on-surface-variant); padding: 16px; text-align: center;">Loading...</div>';
     modal.style.display = 'flex';
     requestAnimationFrame(() => {
-        modal.classList.add('visible');
+        modal.classList.add('active');
     });
 
     fetch(`/api/photos/${uuid}/metadata`)
@@ -897,7 +899,7 @@ function openMetadataModal(uuid) {
 function closeMetadataModal(e) {
     if (e.target.id === 'metadata-modal' || e.target.closest('#metadata-modal') === null) {
         const modal = document.getElementById('metadata-modal');
-        modal.classList.remove('visible');
+        modal.classList.remove('active');
         setTimeout(() => {
             modal.style.display = 'none';
         }, 200);
