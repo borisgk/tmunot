@@ -209,7 +209,7 @@ pub fn insertPhoto(record: PhotoRecord) !void {
     const db = try core.getDb(record.username);
 
     const insert_sql =
-        \\INSERT INTO photos (uuid, username, filename, extension, year, month, day, shooting_date, upload_date, width, height)
+        \\INSERT OR REPLACE INTO photos (uuid, username, filename, extension, year, month, day, shooting_date, upload_date, width, height)
         \\VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     ;
 
@@ -424,7 +424,7 @@ pub fn insertPhotoExif(username: []const u8, record: PhotoExifRecord) !void {
 
     const insert_sql = comptime blk: {
         @setEvalBranchQuota(10000);
-        var cols: []const u8 = "REPLACE INTO photo_exif (uuid";
+        var cols: []const u8 = "INSERT OR REPLACE INTO photo_exif (uuid";
         var vals: []const u8 = "VALUES (?";
         for (std.meta.fieldNames(PhotoExifRecord)) |field_name| {
             if (std.mem.eql(u8, field_name, "uuid")) continue;
@@ -537,7 +537,7 @@ pub fn insertVideoMetadata(username: []const u8, record: VideoMetadataRecord) !v
 
     const insert_sql = comptime blk: {
         @setEvalBranchQuota(10000);
-        var cols: []const u8 = "REPLACE INTO video_metadata (uuid";
+        var cols: []const u8 = "INSERT OR REPLACE INTO video_metadata (uuid";
         var vals: []const u8 = "VALUES (?";
         for (std.meta.fieldNames(VideoMetadataRecord)) |field_name| {
             if (std.mem.eql(u8, field_name, "uuid")) continue;

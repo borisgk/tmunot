@@ -91,6 +91,79 @@ pub fn main(init: std.process.Init) !void {
     // 3. Start background job processor
     try processor.startQueueWorker(allocator, init.io, &config);
 
+    try performOneTimeVideoMigration(allocator, init.io, &config);
+
     // 7. Start web server
     try server.startServer(init.io, auth_ctx, config);
+}
+
+fn performOneTimeVideoMigration(allocator: std.mem.Allocator, io: std.Io, config: *const config_mod.Config) !void {
+    const marker_path = try std.fmt.allocPrint(allocator, "{s}/.tmunot_video_rotation_fixed", .{config.db_dir});
+    defer allocator.free(marker_path);
+
+    const cwd = std.Io.Dir.cwd();
+    if (cwd.openFile(io, marker_path, .{})) |file| {
+        file.close(io);
+        return;
+    } else |_| {}
+
+    std.debug.print("Starting one-time video update to fix rotation...\n", .{});
+    
+    const users = try db.getUsers(allocator);
+    defer {
+        for (users) |u| {
+            allocator.free(u.username);
+            allocator.free(u.password_hash);
+        }
+        allocator.free(users);
+    }
+
+    var count: usize = 0;
+    for (users) |user| {
+        const photos = try db.getUserPhotos(user.username, allocator);
+        defer {
+            for (photos) |p| {
+                allocator.free(p.uuid);
+                allocator.free(p.username);
+                allocator.free(p.filename);
+                allocator.free(p.extension);
+                allocator.free(p.year);
+                allocator.free(p.month);
+                allocator.free(p.day);
+                if (p.shooting_date) |sd| allocator.free(sd);
+                allocator.free(p.upload_date);
+            }
+            allocator.free(photos);
+        }
+
+        for (photos) |p| {
+            if (std.ascii.eqlIgnoreCase(p.extension, "mp4") or std.ascii.eqlIgnoreCase(p.extension, "mov")) {
+                const job = try allocator.create(processor.FileJob);
+                job.* = processor.FileJob{
+                    .allocator = allocator,
+                    .uuid = try allocator.dupe(u8, p.uuid),
+                    .username = try allocator.dupe(u8, p.username),
+                    .year = try allocator.dupe(u8, p.year),
+                    .month = try allocator.dupe(u8, p.month),
+                    .day = try allocator.dupe(u8, p.day),
+                    .filename = try allocator.dupe(u8, p.filename),
+                    .extension = try allocator.dupe(u8, p.extension),
+                    .upload_date = try allocator.dupe(u8, p.upload_date),
+                    .quality = config.quality,
+                    .t_start = vips.getWallMillis(),
+                    .next = null,
+                };
+                processor.pushJob(job);
+                count += 1;
+            }
+        }
+    }
+
+    if (cwd.createFile(io, marker_path, .{})) |marker_file| {
+        marker_file.close(io);
+    } else |err| {
+        std.debug.print("Could not create marker file: {}\n", .{err});
+    }
+
+    std.debug.print("One-time video update dispatched {d} videos to the background queue.\n", .{count});
 }

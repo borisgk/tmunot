@@ -84,7 +84,7 @@ pub fn handleUpload(
 
     const user = try req_alloc.dupe(u8, username.?);
 
-    // Read the multipart body (allowing up to 50MB)
+    // Read the multipart body (allowing up to 500MB)
     var buf: [1024]u8 = undefined;
     var r = req.readerExpectNone(&buf);
     const body = r.allocRemaining(req_alloc, .limited(500 * 1024 * 1024)) catch |err| {
