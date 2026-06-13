@@ -107,3 +107,22 @@ Ensure the following directories and files are persisted (for example, in Docker
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## Versioning and Releases
+
+To automatically bump the version, tag the repository, and trigger the GitHub Actions release workflow, use the included version bumping script:
+
+```bash
+# Bumps the patch version (e.g., 0.0.0 -> 0.0.1)
+./scripts/bump_version.sh patch
+
+# Bumps the minor version (e.g., 0.1.5 -> 0.2.0)
+./scripts/bump_version.sh minor
+
+# Bumps the major version (e.g., 1.2.3 -> 2.0.0)
+./scripts/bump_version.sh major
+```
+
+Running this script will automatically edit `build.zig.zon`, commit the changes, create a git tag, and push the branch and tags to GitHub. The GitHub Actions CI/CD will then build the binary and generate a release payload.
