@@ -44,11 +44,12 @@ pub const shared_modals_html =
     \\    <div id="album-select-modal" class="lightbox" onclick="closeAlbumSelectModal(event)">
     \\        <div class="modal-content" style="background: var(--md-sys-color-surface-container); padding: 24px; border-radius: 28px; width: 400px; max-width: 90%; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
     \\            <h3 style="margin-top: 0; color: var(--md-sys-color-on-surface); margin-bottom: 16px;">Add to Album</h3>
-    \\            <div id="album-select-list" style="overflow-y: auto; max-height: 300px; margin-bottom: 24px; display: flex; flex-direction: column; gap: 8px;">
+    \\            <div id="album-list-container" style="overflow-y: auto; max-height: 300px; margin-bottom: 24px; display: flex; flex-direction: column; gap: 8px;">
     \\                <!-- Album options loaded dynamically -->
     \\            </div>
     \\            <div style="text-align: right;">
     \\                <button class="md-menu-item" style="display: inline-block; width: auto; background: transparent; color: var(--md-sys-color-primary); border: none; padding: 10px 16px; border-radius: 20px; font-weight: 500; cursor: pointer;" onclick="closeAlbumSelectModal({target:{id:'album-select-modal'}})">Cancel</button>
+    \\                <button id="submit-add-to-album" class="md-menu-item" style="display: inline-block; width: auto; background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer; margin-left: 8px;">Add</button>
     \\            </div>
     \\        </div>
     \\    </div>
