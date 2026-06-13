@@ -606,7 +606,9 @@ pub fn getVideoMetadata(username: []const u8, uuid: []const u8, allocator: std.m
         var record: VideoMetadataRecord = undefined;
         
         inline for (comptime std.meta.fieldNames(VideoMetadataRecord)) |field_name| {
-            @field(record, field_name) = null;
+            if (comptime !std.mem.eql(u8, field_name, "uuid")) {
+                @field(record, field_name) = null;
+            }
         }
 
         var idx: c_int = 0;

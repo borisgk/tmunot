@@ -11,6 +11,7 @@ pub const sqlite3 = core.sqlite3;
 // From photos
 pub const PhotoRecord = photos.PhotoRecord;
 pub const PhotoExifRecord = photos.PhotoExifRecord;
+pub const VideoMetadataRecord = photos.VideoMetadataRecord;
 pub const LocationRecord = photos.LocationRecord;
 pub const insertPhoto = photos.insertPhoto;
 pub const updatePhotoDimensions = photos.updatePhotoDimensions;
@@ -18,6 +19,8 @@ pub const getPhotoLocation = photos.getPhotoLocation;
 pub const getUserPhotos = photos.getUserPhotos;
 pub const insertPhotoExif = photos.insertPhotoExif;
 pub const getPhotoExif = photos.getPhotoExif;
+pub const insertVideoMetadata = photos.insertVideoMetadata;
+pub const getVideoMetadata = photos.getVideoMetadata;
 pub const deletePhoto = photos.deletePhoto;
 
 // From albums
