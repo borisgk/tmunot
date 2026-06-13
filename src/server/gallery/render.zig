@@ -5,6 +5,81 @@ const processor = @import("../../processor.zig");
 const config_mod = @import("../../config.zig");
 
 extern "c" fn time(t: ?*i64) i64;
+
+const shared_modals_html = 
+    \\    <!-- Global Overflow Menu -->
+    \\    <div id="global-menu" class="md-menu">
+    \\        <button class="md-menu-item" id="menu-metadata">
+    \\            <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+    \\            <span>View metadata</span>
+    \\        </button>
+    \\        <button class="md-menu-item" id="menu-download">
+    \\            <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+    \\            <span>Download</span>
+    \\        </button>
+    \\        <button class="md-menu-item" id="menu-add-to-album">
+    \\            <svg viewBox="0 0 24 24"><path fill="currentColor" d="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/></svg>
+    \\            <span>Add to album</span>
+    \\        </button>
+    \\        <button class="md-menu-item md-menu-item--danger" id="menu-delete">
+    \\            <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+    \\            <span>Delete</span>
+    \\        </button>
+    \\    </div>
+    \\
+    \\    <!-- Metadata Modal -->
+    \\    <div id="metadata-modal" class="lightbox" onclick="closeMetadataModal(event)">
+    \\        <div class="modal-content" style="background: var(--md-sys-color-surface-container); padding: 24px; border-radius: 28px; width: 500px; max-width: 90%; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
+    \\            <h2 style="margin-top: 0; color: var(--md-sys-color-on-surface); margin-bottom: 16px;">Photo Metadata</h2>
+    \\            <div id="metadata-list" style="overflow-y: auto; flex: 1; margin-bottom: 24px; display: flex; flex-direction: column; gap: 8px;">
+    \\                <!-- Metadata items loaded dynamically -->
+    \\            </div>
+    \\            <div style="text-align: right;">
+    \\                <button class="md-menu-item" style="display: inline-block; width: auto; background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer;" onclick="closeMetadataModal({target:{id:'metadata-modal'}})">Close</button>
+    \\            </div>
+    \\        </div>
+    \\    </div>
+    \\
+    \\    <!-- Album Selection Modal -->
+    \\    <div id="album-select-modal" class="lightbox" onclick="closeAlbumSelectModal(event)">
+    \\        <div class="modal-content" style="background: var(--md-sys-color-surface-container); padding: 24px; border-radius: 28px; width: 400px; max-width: 90%; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
+    \\            <h2 style="margin-top: 0; color: var(--md-sys-color-on-surface); margin-bottom: 16px;">Add to Album</h2>
+    \\            <div id="album-list-container" style="max-height: 250px; overflow-y: auto; margin-bottom: 24px; display: flex; flex-direction: column; gap: 8px;">
+    \\                <!-- Album items loaded dynamically -->
+    \\            </div>
+    \\            <div style="text-align: right;">
+    \\                <button class="md-menu-item" style="display: inline-block; width: auto; margin-right: 8px; background: transparent; border: none; cursor: pointer; color: var(--md-sys-color-on-surface);" onclick="closeAlbumSelectModal({target:{id:'album-select-modal'}})">Cancel</button>
+    \\                <button id="submit-add-to-album" style="background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer;">Add</button>
+    \\            </div>
+    \\        </div>
+    \\    </div>
+    \\
+    \\    <!-- Profile Modal -->
+    \\    <div id="profile-modal" class="lightbox" onclick="closeProfileModal(event)">
+    \\        <div class="modal-content" style="background: var(--md-sys-color-surface-container); padding: 24px; border-radius: 28px; width: 400px; max-width: 90%; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
+    \\            <h2 style="margin-top: 0; color: var(--md-sys-color-on-surface); margin-bottom: 16px;">My Profile</h2>
+    \\            <form id="profile-form">
+    \\                <div style="margin-bottom: 16px;">
+    \\                    <label style="display: block; font-weight: 500; margin-bottom: 4px;">Avatar</label>
+    \\                    <input type="file" id="profile-avatar-upload" accept="image/png, image/jpeg, image/webp" style="width: 100%; border: 1px solid var(--md-sys-color-outline); border-radius: 8px; padding: 8px; box-sizing: border-box;">
+    \\                </div>
+    \\                <div style="margin-bottom: 16px;">
+    \\                    <label style="display: block; font-weight: 500; margin-bottom: 4px;">Real Name</label>
+    \\                    <input type="text" id="profile-real-name" style="width: 100%; border: 1px solid var(--md-sys-color-outline); border-radius: 8px; padding: 12px; box-sizing: border-box; background: transparent; color: inherit;">
+    \\                </div>
+    \\                <div style="margin-bottom: 24px;">
+    \\                    <label style="display: block; font-weight: 500; margin-bottom: 4px;">New Password (leave blank to keep current)</label>
+    \\                    <input type="password" id="profile-password" style="width: 100%; border: 1px solid var(--md-sys-color-outline); border-radius: 8px; padding: 12px; box-sizing: border-box; background: transparent; color: inherit;">
+    \\                </div>
+    \\                <div style="text-align: right;">
+    \\                    <button type="button" class="md-menu-item" style="display: inline-block; width: auto; margin-right: 8px; background: transparent; border: none; cursor: pointer; color: var(--md-sys-color-on-surface);" onclick="closeProfileModal({target:{id:'profile-modal'}})">Cancel</button>
+    \\                    <button type="submit" style="background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer;">Save</button>
+    \\                </div>
+    \\            </form>
+    \\        </div>
+    \\    </div>
+;
+
 pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail_height: i32) ![]u8 {
     // Use a fresh per-request arena for all intermediate allocations so concurrent
     // page loads don't race on the shared auth_ctx.allocator.
@@ -197,9 +272,12 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
 
     try html.appendSlice(alloc, part4);
 
+    var final_html: []const u8 = html.items;
+    final_html = try replacePlaceholder(alloc, final_html, "<!-- SHARED_MODALS -->", shared_modals_html);
+
     // Copy the finished HTML into page_allocator memory — caller (server.zig) frees
     // it with `defer std.heap.page_allocator.free(html)`.
-    const result = try std.heap.page_allocator.dupe(u8, html.items);
+    const result = try std.heap.page_allocator.dupe(u8, final_html);
     return result;
 }
 
@@ -521,6 +599,8 @@ pub fn generateAlbumDetailHtml(allocator: std.mem.Allocator, username: []const u
     result_html = try replacePlaceholder(alloc, result_html, "<!-- GALLERY_LOGOUT -->", actions_combined);
     // Replace <!-- ALBUM_PHOTOS_CONTENT -->
     result_html = try replacePlaceholder(alloc, result_html, "<!-- ALBUM_PHOTOS_CONTENT -->", photos_html.items);
+    // Replace <!-- SHARED_MODALS -->
+    result_html = try replacePlaceholder(alloc, result_html, "<!-- SHARED_MODALS -->", shared_modals_html);
     
     // Inject dynamic style tag (prepend to LCP_PRELOAD or replace LCP_PRELOAD)
     const combined_preload_style = try std.fmt.allocPrint(alloc, "{s}{s}", .{ dynamic_style, lcp_tag });

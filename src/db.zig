@@ -17,6 +17,7 @@ pub const updatePhotoDimensions = photos.updatePhotoDimensions;
 pub const getPhotoLocation = photos.getPhotoLocation;
 pub const getUserPhotos = photos.getUserPhotos;
 pub const insertPhotoExif = photos.insertPhotoExif;
+pub const getPhotoExif = photos.getPhotoExif;
 pub const deletePhoto = photos.deletePhoto;
 
 // From albums

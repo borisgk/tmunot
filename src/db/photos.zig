@@ -449,6 +449,70 @@ pub fn insertPhotoExif(username: []const u8, record: PhotoExifRecord) !void {
     }
 }
 
+pub fn getPhotoExif(username: []const u8, uuid: []const u8, allocator: std.mem.Allocator) !?PhotoExifRecord {
+    const io = core.global_io orelse return error.DbNotInitialized;
+    core.db_mutex.lockUncancelable(io);
+    defer core.db_mutex.unlock(io);
+
+    const db = try core.getDb(username);
+
+    const select_sql = comptime blk: {
+        var q: []const u8 = "SELECT ";
+        var first = true;
+        for (std.meta.fieldNames(PhotoExifRecord)) |field_name| {
+            if (!first) q = q ++ ", ";
+            q = q ++ "\"" ++ field_name ++ "\"";
+            first = false;
+        }
+        break :blk q ++ " FROM photo_exif WHERE uuid = ?;";
+    };
+
+    var stmt: ?*core.sqlite3_stmt = null;
+    if (core.sqlite3_prepare_v2(db, select_sql, -1, &stmt, null) != core.SQLITE_OK) {
+        return error.SqlitePrepareFailed;
+    }
+    defer _ = core.sqlite3_finalize(stmt);
+
+    _ = core.sqlite3_bind_text(stmt, 1, uuid.ptr, @intCast(uuid.len), core.SQLITE_TRANSIENT);
+
+    const rc = core.sqlite3_step(stmt);
+    if (rc == core.SQLITE_ROW) {
+        var record: PhotoExifRecord = undefined;
+        var idx: c_int = 0;
+        inline for (comptime std.meta.fieldNames(PhotoExifRecord)) |field_name| {
+            if (comptime std.mem.eql(u8, field_name, "uuid")) {
+                if (core.sqlite3_column_type(stmt, idx) == core.SQLITE_NULL) {
+                    return error.MissingUuid;
+                } else {
+                    const text_ptr = core.sqlite3_column_text(stmt, idx);
+                    const text_len = core.sqlite3_column_bytes(stmt, idx);
+                    if (text_ptr != null) {
+                        @field(record, field_name) = try allocator.dupe(u8, text_ptr[0..@intCast(text_len)]);
+                    } else {
+                        return error.MissingUuid;
+                    }
+                }
+            } else {
+                if (core.sqlite3_column_type(stmt, idx) == core.SQLITE_NULL) {
+                    @field(record, field_name) = null;
+                } else {
+                    const text_ptr = core.sqlite3_column_text(stmt, idx);
+                    const text_len = core.sqlite3_column_bytes(stmt, idx);
+                    if (text_ptr != null) {
+                        @field(record, field_name) = try allocator.dupe(u8, text_ptr[0..@intCast(text_len)]);
+                    } else {
+                        @field(record, field_name) = null;
+                    }
+                }
+            }
+            idx += 1;
+        }
+        return record;
+    }
+
+    return null;
+}
+
 pub fn deletePhoto(username: []const u8, uuid: []const u8) !void {
     const io = core.global_io orelse return error.DbNotInitialized;
     core.db_mutex.lockUncancelable(io);
