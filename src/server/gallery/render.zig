@@ -13,6 +13,10 @@ const shared_modals_html =
     \\            <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
     \\            <span>View metadata</span>
     \\        </button>
+    \\        <button class="md-menu-item" id="menu-change-date">
+    \\            <svg viewBox="0 0 24 24"><path fill="currentColor" d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7v-5z"/></svg>
+    \\            <span>Change Date/Time</span>
+    \\        </button>
     \\        <button class="md-menu-item" id="menu-download">
     \\            <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
     \\            <span>Download</span>
@@ -51,6 +55,30 @@ const shared_modals_html =
     \\            <div style="text-align: right;">
     \\                <button class="md-menu-item" style="display: inline-block; width: auto; margin-right: 8px; background: transparent; border: none; cursor: pointer; color: var(--md-sys-color-on-surface);" onclick="closeAlbumSelectModal({target:{id:'album-select-modal'}})">Cancel</button>
     \\                <button id="submit-add-to-album" style="background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer;">Add</button>
+    \\            </div>
+    \\        </div>
+    \\    </div>
+    \\
+    \\    <!-- Album Name Prompt Modal -->
+    \\    <div id="album-prompt-modal" class="lightbox" style="z-index: 10001;" onclick="closeAlbumPromptModal(event)">
+    \\        <div class="modal-content" style="background: var(--md-sys-color-surface-container); padding: 24px; border-radius: 28px; width: 350px; max-width: 90%; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
+    \\            <h3 style="margin-top: 0; color: var(--md-sys-color-on-surface); margin-bottom: 16px;">Create Album</h3>
+    \\            <input type="text" id="new-album-name" placeholder="Album name" style="width: 100%; padding: 12px; border-radius: 12px; border: 1px solid var(--md-sys-color-outline); background: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface); font-family: inherit; font-size: 16px; margin-bottom: 24px; box-sizing: border-box;" />
+    \\            <div style="text-align: right;">
+    \\                <button class="md-menu-item" style="display: inline-block; width: auto; background: transparent; color: var(--md-sys-color-primary); border: none; padding: 10px 16px; border-radius: 20px; font-weight: 500; cursor: pointer; margin-right: 8px;" onclick="closeAlbumPromptModal({target:{id:'album-prompt-modal'}})">Cancel</button>
+    \\                <button class="md-menu-item" style="display: inline-block; width: auto; background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer;" onclick="submitNewAlbum()">Create</button>
+    \\            </div>
+    \\        </div>
+    \\    </div>
+    \\
+    \\    <!-- Change Date Modal -->
+    \\    <div id="change-date-modal" class="lightbox" onclick="closeChangeDateModal(event)">
+    \\        <div class="modal-content" style="background: var(--md-sys-color-surface-container); padding: 24px; border-radius: 28px; width: 350px; max-width: 90%; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
+    \\            <h3 style="margin-top: 0; color: var(--md-sys-color-on-surface); margin-bottom: 16px;">Change Date/Time</h3>
+    \\            <input type="datetime-local" step="1" id="change-date-input" style="width: 100%; padding: 12px; border-radius: 12px; border: 1px solid var(--md-sys-color-outline); background: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface); font-family: inherit; font-size: 16px; margin-bottom: 24px; box-sizing: border-box;" />
+    \\            <div style="text-align: right;">
+    \\                <button class="md-menu-item" style="display: inline-block; width: auto; background: transparent; color: var(--md-sys-color-primary); border: none; padding: 10px 16px; border-radius: 20px; font-weight: 500; cursor: pointer; margin-right: 8px;" onclick="closeChangeDateModal({target:{id:'change-date-modal'}})">Cancel</button>
+    \\                <button class="md-menu-item" style="display: inline-block; width: auto; background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer;" onclick="submitChangeDate()">Save</button>
     \\            </div>
     \\        </div>
     \\    </div>
@@ -234,9 +262,10 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
                          std.mem.eql(u8, r.extension, "avi");
 
         // Using flat list flexbox with ratio-based flex-basis for automatic responsive row packing and fixed height for perfect consistency
+        const shooting_date_str = r.shooting_date orelse "";
         const card = if (is_video)
             try std.fmt.allocPrint(alloc,
-                \\        <div class="card video-card" data-uuid="{s}" data-year="{s}" data-month="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h));" onclick="openLightbox('/previews/{s}.{s}')">
+                \\        <div class="card video-card" data-uuid="{s}" data-year="{s}" data-month="{s}" data-date="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h));" onclick="openLightbox('/previews/{s}.{s}')">
                 \\            <button class="card-overflow-btn" aria-label="More options" onclick="toggleMenu(event, '{s}', '{s}')">
                 \\                <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
                 \\            </button>
@@ -250,10 +279,10 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
                 \\            <p>{s}</p>
                 \\        </div>
                 \\
-            , .{ r.uuid, ym.year, ym.month, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename })
+            , .{ r.uuid, ym.year, ym.month, shooting_date_str, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename })
         else
             try std.fmt.allocPrint(alloc,
-                \\        <div class="card" data-uuid="{s}" data-year="{s}" data-month="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h));" onclick="openLightbox('/previews/{s}.{s}')">
+                \\        <div class="card" data-uuid="{s}" data-year="{s}" data-month="{s}" data-date="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h));" onclick="openLightbox('/previews/{s}.{s}')">
                 \\            <button class="card-overflow-btn" aria-label="More options" onclick="toggleMenu(event, '{s}', '{s}')">
                 \\                <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
                 \\            </button>
@@ -264,7 +293,7 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
                 \\            <p>{s}</p>
                 \\        </div>
                 \\
-            , .{ r.uuid, ym.year, ym.month, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename });
+            , .{ r.uuid, ym.year, ym.month, shooting_date_str, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename });
         try html.appendSlice(alloc, card);
     }
 
@@ -545,9 +574,10 @@ pub fn generateAlbumDetailHtml(allocator: std.mem.Allocator, username: []const u
                          std.mem.eql(u8, r.extension, "webm") or
                          std.mem.eql(u8, r.extension, "avi");
 
+        const shooting_date_str = r.shooting_date orelse "";
         const card = if (is_video)
             try std.fmt.allocPrint(alloc,
-                \\        <div class="card video-card" data-uuid="{s}" data-year="{s}" data-month="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h));" onclick="openLightbox('/previews/{s}.{s}')">
+                \\        <div class="card video-card" data-uuid="{s}" data-year="{s}" data-month="{s}" data-date="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h));" onclick="openLightbox('/previews/{s}.{s}')">
                 \\            <button class="card-overflow-btn" aria-label="More options" onclick="toggleMenu(event, '{s}', '{s}')">
                 \\                <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
                 \\            </button>
@@ -561,10 +591,10 @@ pub fn generateAlbumDetailHtml(allocator: std.mem.Allocator, username: []const u
                 \\            <p>{s}</p>
                 \\        </div>
                 \\
-            , .{ r.uuid, ym.year, ym.month, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename })
+            , .{ r.uuid, ym.year, ym.month, shooting_date_str, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename })
         else
             try std.fmt.allocPrint(alloc,
-                \\        <div class="card" data-uuid="{s}" data-year="{s}" data-month="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h));" onclick="openLightbox('/previews/{s}.{s}')">
+                \\        <div class="card" data-uuid="{s}" data-year="{s}" data-month="{s}" data-date="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h));" onclick="openLightbox('/previews/{s}.{s}')">
                 \\            <button class="card-overflow-btn" aria-label="More options" onclick="toggleMenu(event, '{s}', '{s}')">
                 \\                <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
                 \\            </button>
@@ -575,7 +605,7 @@ pub fn generateAlbumDetailHtml(allocator: std.mem.Allocator, username: []const u
                 \\            <p>{s}</p>
                 \\        </div>
                 \\
-            , .{ r.uuid, ym.year, ym.month, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename });
+            , .{ r.uuid, ym.year, ym.month, shooting_date_str, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename });
         try photos_html.appendSlice(alloc, card);
     }
 

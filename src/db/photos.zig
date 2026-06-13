@@ -661,3 +661,31 @@ pub fn deletePhoto(username: []const u8, uuid: []const u8) !void {
         return error.SqliteDeleteFailed;
     }
 }
+
+pub fn updatePhotoDate(username: []const u8, uuid: []const u8, year: []const u8, month: []const u8, day: []const u8, shooting_date: []const u8) !void {
+    const io = core.global_io orelse return error.DbNotInitialized;
+    core.db_mutex.lockUncancelable(io);
+    defer core.db_mutex.unlock(io);
+
+    const db = try core.getDb(username);
+
+    const update_sql = "UPDATE photos SET year = ?, month = ?, day = ?, shooting_date = ? WHERE uuid = ?;";
+
+    var stmt: ?*core.sqlite3_stmt = null;
+    if (core.sqlite3_prepare_v2(db, update_sql, -1, &stmt, null) != core.SQLITE_OK) {
+        return error.SqlitePrepareFailed;
+    }
+    defer _ = core.sqlite3_finalize(stmt);
+
+    _ = core.sqlite3_bind_text(stmt, 1, year.ptr, @intCast(year.len), core.SQLITE_TRANSIENT);
+    _ = core.sqlite3_bind_text(stmt, 2, month.ptr, @intCast(month.len), core.SQLITE_TRANSIENT);
+    _ = core.sqlite3_bind_text(stmt, 3, day.ptr, @intCast(day.len), core.SQLITE_TRANSIENT);
+    _ = core.sqlite3_bind_text(stmt, 4, shooting_date.ptr, @intCast(shooting_date.len), core.SQLITE_TRANSIENT);
+    _ = core.sqlite3_bind_text(stmt, 5, uuid.ptr, @intCast(uuid.len), core.SQLITE_TRANSIENT);
+
+    const rc = core.sqlite3_step(stmt);
+    if (rc != core.SQLITE_DONE) {
+        std.debug.print("Failed to update photo date: {s}\n", .{core.sqlite3_errmsg(db)});
+        return error.SqliteUpdateFailed;
+    }
+}
