@@ -4,6 +4,7 @@ const logger = @import("../logger.zig");
 const db = @import("../db.zig");
 const exif = @import("../exif.zig");
 const config_mod = @import("../config.zig");
+const video_meta = @import("../video_meta.zig");
 
 const queue = @import("queue.zig");
 const sse = @import("sse.zig");
@@ -491,19 +492,42 @@ pub fn processJob(job: *queue.FileJob) void {
         }
     }
 
-    // Extract Full EXIF data for SQLite
-    const full_exif_record = exif.extractFullExifFromBuffer(job.allocator, file_buf, job.uuid) catch |err| {
-        std.debug.print("Failed to extract full EXIF: {}\n", .{err});
-        return;
-    };
-    defer {
-        @setEvalBranchQuota(10000);
-        inline for (comptime std.meta.fieldNames(db.PhotoExifRecord)) |field_name| {
-            if (comptime !std.mem.eql(u8, field_name, "uuid")) {
-                if (@field(full_exif_record, field_name)) |v| job.allocator.free(v);
+
+    if (is_video) {
+        const video_record = video_meta.extractVideoMetadata(job.allocator, orig_path, job.uuid) catch |err| {
+            std.debug.print("Failed to extract video metadata: {}\n", .{err});
+            return;
+        };
+        defer {
+            @setEvalBranchQuota(10000);
+            inline for (comptime std.meta.fieldNames(db.VideoMetadataRecord)) |field_name| {
+                if (comptime !std.mem.eql(u8, field_name, "uuid")) {
+                    if (@field(video_record, field_name)) |v| job.allocator.free(v);
+                }
             }
+            job.allocator.free(video_record.uuid);
         }
-        job.allocator.free(full_exif_record.uuid);
+        db.insertVideoMetadata(job.username, video_record) catch |err| {
+            std.debug.print("Failed to save video metadata: {}\n", .{err});
+        };
+    } else {
+        // Extract Full EXIF data for SQLite
+        const full_exif_record = exif.extractFullExifFromBuffer(job.allocator, file_buf, job.uuid) catch |err| {
+            std.debug.print("Failed to extract full EXIF: {}\n", .{err});
+            return;
+        };
+        defer {
+            @setEvalBranchQuota(10000);
+            inline for (comptime std.meta.fieldNames(db.PhotoExifRecord)) |field_name| {
+                if (comptime !std.mem.eql(u8, field_name, "uuid")) {
+                    if (@field(full_exif_record, field_name)) |v| job.allocator.free(v);
+                }
+            }
+            job.allocator.free(full_exif_record.uuid);
+        }
+        db.insertPhotoExif(job.username, full_exif_record) catch |err| {
+            std.debug.print("Failed to save EXIF data: {}\n", .{err});
+        };
     }
 
     // Write photo metadata and EXIF records into SQLite
@@ -525,8 +549,9 @@ pub fn processJob(job: *queue.FileJob) void {
         std.debug.print("Failed to insert photo metadata: {}\n", .{err});
         return;
     };
-    db.insertPhotoExif(job.username, full_exif_record) catch |err| {
-        std.debug.print("Failed to save EXIF data: {}\n", .{err});
+    db.insertPhoto(record) catch |err| {
+        std.debug.print("Failed to insert photo metadata: {}\n", .{err});
+        return;
     };
     const t_db = vips.getWallMillis();
     logger.logEvent(job.uuid, "database updated (bg)", job.t_start, t_db);

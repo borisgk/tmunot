@@ -15,6 +15,20 @@ pub const PhotoRecord = struct {
     height: ?i32,
 };
 
+pub const VideoMetadataRecord = struct {
+    uuid: []const u8,
+    codec_name: ?[]const u8 = null,
+    width: ?[]const u8 = null,
+    height: ?[]const u8 = null,
+    duration: ?[]const u8 = null,
+    frame_rate: ?[]const u8 = null,
+    bit_rate: ?[]const u8 = null,
+    format_name: ?[]const u8 = null,
+    encoder: ?[]const u8 = null,
+    creation_time: ?[]const u8 = null,
+    location: ?[]const u8 = null,
+};
+
 pub const PhotoExifRecord = struct {
     uuid: []const u8,
     GPSVersionID: ?[]const u8 = null,
@@ -496,6 +510,115 @@ pub fn getPhotoExif(username: []const u8, uuid: []const u8, allocator: std.mem.A
                 if (core.sqlite3_column_type(stmt, idx) == core.SQLITE_NULL) {
                     @field(record, field_name) = null;
                 } else {
+                    const text_ptr = core.sqlite3_column_text(stmt, idx);
+                    const text_len = core.sqlite3_column_bytes(stmt, idx);
+                    if (text_ptr != null) {
+                        @field(record, field_name) = try allocator.dupe(u8, text_ptr[0..@intCast(text_len)]);
+                    } else {
+                        @field(record, field_name) = null;
+                    }
+                }
+            }
+            idx += 1;
+        }
+        return record;
+    }
+
+    return null;
+}
+
+pub fn insertVideoMetadata(username: []const u8, record: VideoMetadataRecord) !void {
+    @setEvalBranchQuota(10000);
+    const io = core.global_io orelse return error.DbNotInitialized;
+    core.db_mutex.lockUncancelable(io);
+    defer core.db_mutex.unlock(io);
+
+    const db = try core.getDb(username);
+
+    const insert_sql = comptime blk: {
+        @setEvalBranchQuota(10000);
+        var cols: []const u8 = "INSERT INTO video_metadata (uuid";
+        var vals: []const u8 = "VALUES (?";
+        for (std.meta.fieldNames(VideoMetadataRecord)) |field_name| {
+            if (std.mem.eql(u8, field_name, "uuid")) continue;
+            cols = cols ++ ", \"" ++ field_name ++ "\"";
+            vals = vals ++ ", ?";
+        }
+        break :blk cols ++ ") " ++ vals ++ ");";
+    };
+
+    var stmt: ?*core.sqlite3_stmt = null;
+    if (core.sqlite3_prepare_v2(db, insert_sql, -1, &stmt, null) != core.SQLITE_OK) {
+        std.debug.print("Failed to prepare VideoMetadata insert statement: {s}\n", .{core.sqlite3_errmsg(db)});
+        return error.SqlitePrepareFailed;
+    }
+    defer _ = core.sqlite3_finalize(stmt);
+
+    _ = core.sqlite3_bind_text(stmt, 1, record.uuid.ptr, @intCast(record.uuid.len), core.SQLITE_TRANSIENT);
+    
+    var idx: c_int = 2;
+    inline for (comptime std.meta.fieldNames(VideoMetadataRecord)) |field_name| {
+        if (!comptime std.mem.eql(u8, field_name, "uuid")) {
+            const val_opt = @field(record, field_name);
+            if (val_opt) |val| {
+                _ = core.sqlite3_bind_text(stmt, idx, val.ptr, @intCast(val.len), core.SQLITE_TRANSIENT);
+            } else {
+                _ = core.sqlite3_bind_null(stmt, idx);
+            }
+            idx += 1;
+        }
+    }
+
+    const rc = core.sqlite3_step(stmt);
+    if (rc != core.SQLITE_DONE) {
+        std.debug.print("Failed to insert video metadata: {s}\n", .{core.sqlite3_errmsg(db)});
+        return error.SqliteInsertFailed;
+    }
+}
+
+pub fn getVideoMetadata(username: []const u8, uuid: []const u8, allocator: std.mem.Allocator) !?VideoMetadataRecord {
+    const io = core.global_io orelse return error.DbNotInitialized;
+    core.db_mutex.lockUncancelable(io);
+    defer core.db_mutex.unlock(io);
+
+    const db = try core.getDb(username);
+
+    const query_sql = comptime blk: {
+        @setEvalBranchQuota(10000);
+        var q: []const u8 = "SELECT uuid";
+        for (std.meta.fieldNames(VideoMetadataRecord)) |field_name| {
+            if (std.mem.eql(u8, field_name, "uuid")) continue;
+            q = q ++ ", \"" ++ field_name ++ "\"";
+        }
+        break :blk q ++ " FROM video_metadata WHERE uuid = ?;";
+    };
+
+    var stmt: ?*core.sqlite3_stmt = null;
+    if (core.sqlite3_prepare_v2(db, query_sql, -1, &stmt, null) != core.SQLITE_OK) {
+        std.debug.print("Failed to prepare VideoMetadata select statement: {s}\n", .{core.sqlite3_errmsg(db)});
+        return error.SqlitePrepareFailed;
+    }
+    defer _ = core.sqlite3_finalize(stmt);
+
+    _ = core.sqlite3_bind_text(stmt, 1, uuid.ptr, @intCast(uuid.len), core.SQLITE_TRANSIENT);
+
+    if (core.sqlite3_step(stmt) == core.SQLITE_ROW) {
+        var record: VideoMetadataRecord = undefined;
+        
+        inline for (comptime std.meta.fieldNames(VideoMetadataRecord)) |field_name| {
+            @field(record, field_name) = null;
+        }
+
+        var idx: c_int = 0;
+        inline for (comptime std.meta.fieldNames(VideoMetadataRecord)) |field_name| {
+            if (comptime std.mem.eql(u8, field_name, "uuid")) {
+                const text_ptr = core.sqlite3_column_text(stmt, idx);
+                const text_len = core.sqlite3_column_bytes(stmt, idx);
+                if (text_ptr != null) {
+                    record.uuid = try allocator.dupe(u8, text_ptr[0..@intCast(text_len)]);
+                }
+            } else {
+                if (core.sqlite3_column_type(stmt, idx) != core.SQLITE_NULL) {
                     const text_ptr = core.sqlite3_column_text(stmt, idx);
                     const text_len = core.sqlite3_column_bytes(stmt, idx);
                     if (text_ptr != null) {
