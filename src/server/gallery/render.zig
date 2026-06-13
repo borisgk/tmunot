@@ -35,6 +35,7 @@ const shared_modals_html =
     \\                <!-- Metadata items loaded dynamically -->
     \\            </div>
     \\            <div style="text-align: right;">
+    \\                <button id="metadata-refresh-btn" class="md-menu-item" style="display: inline-block; width: auto; background: var(--md-sys-color-secondary); color: var(--md-sys-color-on-secondary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer; margin-right: 8px;" onclick="refreshMetadata()">Refresh</button>
     \\                <button class="md-menu-item" style="display: inline-block; width: auto; background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer;" onclick="closeMetadataModal({target:{id:'metadata-modal'}})">Close</button>
     \\            </div>
     \\        </div>

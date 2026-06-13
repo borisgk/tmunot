@@ -839,7 +839,10 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
+let currentMetadataUuid = null;
+
 function openMetadataModal(uuid) {
+    currentMetadataUuid = uuid;
     const modal = document.getElementById('metadata-modal');
     const list = document.getElementById('metadata-list');
     list.innerHTML = '<div style="color: var(--md-sys-color-on-surface-variant); padding: 16px; text-align: center;">Loading...</div>';
@@ -904,4 +907,27 @@ function closeMetadataModal(e) {
             modal.style.display = 'none';
         }, 200);
     }
+}
+
+function refreshMetadata() {
+    if (!currentMetadataUuid) return;
+    const btn = document.getElementById('metadata-refresh-btn');
+    const originalText = btn.textContent;
+    btn.textContent = 'Refreshing...';
+    btn.disabled = true;
+
+    fetch(`/api/photos/${currentMetadataUuid}/metadata/refresh`, { method: 'POST' })
+        .then(res => {
+            if (!res.ok) throw new Error("Failed to refresh metadata");
+            // Reload the metadata modal content
+            openMetadataModal(currentMetadataUuid);
+        })
+        .catch(err => {
+            console.error(err);
+            alert("Error refreshing metadata.");
+        })
+        .finally(() => {
+            btn.textContent = originalText;
+            btn.disabled = false;
+        });
 }

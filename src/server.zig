@@ -3,6 +3,9 @@ const auth = @import("auth.zig");
 const config_mod = @import("config.zig");
 const processor = @import("processor.zig");
 const db = @import("db.zig");
+const core = @import("db/core.zig");
+const video_meta_mod = @import("video_meta.zig");
+const exif_mod = @import("exif.zig");
 
 const server_gallery = @import("server/gallery.zig");
 const server_auth = @import("server/auth.zig");
@@ -311,6 +314,59 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
                 return;
             } else {
                 try req.respond("Not Found", .{ .status = .not_found });
+                return;
+            }
+        }
+        try req.respond("Bad Request", .{ .status = .bad_request });
+        return;
+    }
+
+    if (req.head.method == .POST and std.mem.startsWith(u8, target, "/api/photos/") and std.mem.endsWith(u8, target, "/metadata/refresh")) {
+        if (!is_authenticated or username == null) {
+            try req.respond("Unauthorized", .{ .status = .unauthorized });
+            return;
+        }
+        const photo_uuid = target[12 .. target.len - 17];
+        if (photo_uuid.len == 36) {
+            if (try db.getPhotoLocation(photo_uuid, req_alloc)) |loc| {
+                const is_video = std.mem.eql(u8, loc.extension, "mp4") or std.mem.eql(u8, loc.extension, "mov") or std.mem.eql(u8, loc.extension, "m4v") or std.mem.eql(u8, loc.extension, "webm") or std.mem.eql(u8, loc.extension, "avi");
+                const orig_path = try std.fmt.allocPrint(req_alloc, "{s}/{s}/{s}/{s}/{s}.{s}", .{ config.originals_dir, loc.username, loc.year, loc.month, photo_uuid, loc.extension });
+                // io is already in scope
+                
+                if (is_video) {
+                    const video_record = try video_meta_mod.extractVideoMetadata(req_alloc, io, orig_path, photo_uuid);
+                    defer {
+                        @setEvalBranchQuota(10000);
+                        inline for (comptime std.meta.fieldNames(db.VideoMetadataRecord)) |field_name| {
+                            if (comptime !std.mem.eql(u8, field_name, "uuid")) {
+                                if (@field(video_record, field_name)) |v| req_alloc.free(v);
+                            }
+                        }
+                        req_alloc.free(video_record.uuid);
+                    }
+                    try db.insertVideoMetadata(loc.username, video_record);
+                } else {
+                    const file_buf = blk: {
+                        var file = try std.Io.Dir.cwd().openFile(io, orig_path, .{});
+                        defer file.close(io);
+                        const file_size = try file.stat(io);
+                        const buf = try req_alloc.alloc(u8, @intCast(file_size.size));
+                        _ = try file.readPositionalAll(io, buf, 0);
+                        break :blk buf;
+                    };
+                    const exif_record = try exif_mod.extractFullExifFromBuffer(req_alloc, file_buf, photo_uuid);
+                    defer {
+                        @setEvalBranchQuota(10000);
+                        inline for (comptime std.meta.fieldNames(db.PhotoExifRecord)) |field_name| {
+                            if (comptime !std.mem.eql(u8, field_name, "uuid")) {
+                                if (@field(exif_record, field_name)) |v| req_alloc.free(v);
+                            }
+                        }
+                        req_alloc.free(exif_record.uuid);
+                    }
+                    try db.insertPhotoExif(loc.username, exif_record);
+                }
+                try req.respond("", .{ .status = .ok });
                 return;
             }
         }
