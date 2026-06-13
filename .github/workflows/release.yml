@@ -21,9 +21,9 @@ jobs:
           sudo apt-get install -y libvips-dev libexif-dev libsqlite3-dev python3
 
       - name: Setup Zig
-        uses: mlugg/setup-zig@v1
+        uses: goto-bus-stop/setup-zig@v2
         with:
-          version: latest
+          version: master
 
       - name: Build
         run: zig build -Doptimize=ReleaseSafe
