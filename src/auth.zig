@@ -2,21 +2,27 @@ const std = @import("std");
 const hmac = std.crypto.auth.hmac.sha2.HmacSha256;
 const base64 = std.base64.url_safe_no_pad;
 const argon2 = std.crypto.pwhash.argon2;
+const db = @import("db.zig");
 
 extern "c" fn time(t: ?*i64) i64;
 
 pub const User = struct {
     username: []const u8,
     password_hash: []const u8,
+    real_name: []const u8 = "",
+};
+
+pub const PublicUser = struct {
+    username: []const u8,
+    real_name: []const u8,
+    is_admin: bool,
+    avatar_ext: ?[]const u8,
 };
 
 pub const AuthContext = struct {
     allocator: std.mem.Allocator,
     io: std.Io,
     jwt_secret: []const u8,
-    users: std.StringHashMap(User),
-    users_lock: std.Io.RwLock,
-    users_file_path: []const u8,
 
     pub fn init(allocator: std.mem.Allocator, io: std.Io, users_file_path: []const u8) !*AuthContext {
         var self = try allocator.create(AuthContext);
@@ -24,25 +30,36 @@ pub const AuthContext = struct {
             .allocator = allocator,
             .io = io,
             .jwt_secret = try initJwtSecret(allocator, io),
-            .users = std.StringHashMap(User).init(allocator),
-            .users_lock = .init,
-            .users_file_path = try allocator.dupe(u8, users_file_path),
         };
 
-        try self.loadUsers();
+        const db_path = "users.db";
+        try db.initUsersDb(allocator, db_path);
+
+        try self.migrateFromJSON(users_file_path);
+
+        // Ensure admin exists
+        const users_list = try db.getUsers(allocator);
+        defer {
+            for (users_list) |u| {
+                allocator.free(u.username);
+                allocator.free(u.password_hash);
+                allocator.free(u.real_name);
+                if (u.avatar_ext) |ext| allocator.free(ext);
+            }
+            allocator.free(users_list);
+        }
+
+        if (users_list.len == 0) {
+            std.debug.print("users.db is empty, creating default admin user.\n", .{});
+            try self.createUser("admin", "admin", "Administrator", true);
+        }
+
         return self;
     }
 
     pub fn deinit(self: *AuthContext) void {
-        var it = self.users.iterator();
-        while (it.next()) |entry| {
-            self.allocator.free(entry.key_ptr.*);
-            self.allocator.free(entry.value_ptr.username);
-            self.allocator.free(entry.value_ptr.password_hash);
-        }
-        self.users.deinit();
+        db.deinitUsersDb();
         self.allocator.free(self.jwt_secret);
-        self.allocator.free(self.users_file_path);
         self.allocator.destroy(self);
     }
 
@@ -91,89 +108,69 @@ pub const AuthContext = struct {
         return allocator.dupe(u8, &secret);
     }
 
-    fn loadUsers(self: *AuthContext) !void {
+    fn migrateFromJSON(self: *AuthContext, json_path: []const u8) !void {
         const cwd = std.Io.Dir.cwd();
-        var file = cwd.openFile(self.io, self.users_file_path, .{}) catch |err| {
-            if (err == error.FileNotFound) {
-                // Create default admin/admin user
-                std.debug.print("users.json not found, creating default admin user.\n", .{});
-                try self.createUser("admin", "admin");
-                try self.saveUsers();
-                return;
-            }
-            return err;
+        var file = cwd.openFile(self.io, json_path, .{}) catch {
+            return; // no json file or error, skip
         };
         defer file.close(self.io);
 
-        const stat = try file.stat(self.io);
-        if (stat.size == 0) {
-            std.debug.print("users.json is empty, creating default admin user.\n", .{});
-            try self.createUser("admin", "admin");
-            try self.saveUsers();
-            return;
-        }
+        const stat = file.stat(self.io) catch return;
+        if (stat.size == 0) return;
 
         const contents = try self.allocator.alloc(u8, @intCast(stat.size));
         defer self.allocator.free(contents);
         var reader = file.reader(self.io, &.{});
-        try reader.interface.readSliceAll(contents);
+        reader.interface.readSliceAll(contents) catch return;
 
-        const parsed = try std.json.parseFromSlice([]User, self.allocator, contents, .{ .ignore_unknown_fields = true });
+        const parsed = std.json.parseFromSlice([]User, self.allocator, contents, .{ .ignore_unknown_fields = true }) catch return;
         defer parsed.deinit();
 
         for (parsed.value) |u| {
-            try self.users.put(try self.allocator.dupe(u8, u.username), .{
-                .username = try self.allocator.dupe(u8, u.username),
-                .password_hash = try self.allocator.dupe(u8, u.password_hash),
-            });
+            const existing = db.getUser(u.username, self.allocator) catch null;
+            if (existing) |e| {
+                self.allocator.free(e.username);
+                self.allocator.free(e.password_hash);
+                self.allocator.free(e.real_name);
+                if (e.avatar_ext) |ext| self.allocator.free(ext);
+                continue;
+            }
+
+            const is_admin = std.mem.eql(u8, u.username, "admin");
+            db.insertUser(u.username, u.password_hash, u.real_name, is_admin, null) catch |e| {
+                std.debug.print("Failed to migrate user {s}: {}\n", .{u.username, e});
+            };
         }
+        
+        cwd.rename(json_path, cwd, "users.json.bak", self.io) catch {};
     }
 
-    // Assumes users_lock is already held (shared or exclusive)
-    fn saveUsersInternal(self: *AuthContext) !void {
-        const cwd = std.Io.Dir.cwd();
-        var file = try cwd.createFile(self.io, self.users_file_path, .{});
-        defer file.close(self.io);
-
-        var user_list = std.ArrayList(User).empty;
-        defer user_list.deinit(self.allocator);
-
-        var it = self.users.iterator();
-        while (it.next()) |entry| {
-            try user_list.append(self.allocator, entry.value_ptr.*);
+    pub fn createUser(self: *AuthContext, username: []const u8, password: []const u8, real_name: []const u8, is_admin: bool) !void {
+        const existing = try db.getUser(username, self.allocator);
+        if (existing) |e| {
+            self.allocator.free(e.username);
+            self.allocator.free(e.password_hash);
+            self.allocator.free(e.real_name);
+            if (e.avatar_ext) |ext| self.allocator.free(ext);
+            return error.UserAlreadyExists;
         }
 
-        var writer = file.writer(self.io, &.{});
-        try std.json.Stringify.value(user_list.items, .{ .whitespace = .indent_4 }, &writer.interface);
-    }
-
-    pub fn saveUsers(self: *AuthContext) !void {
-        self.users_lock.lockSharedUncancelable(self.io);
-        defer self.users_lock.unlockShared(self.io);
-        try self.saveUsersInternal();
-    }
-
-    pub fn createUser(self: *AuthContext, username: []const u8, password: []const u8) !void {
         var out_buf: [128]u8 = undefined;
         const hash = try argon2.strHash(password, .{ .allocator = self.allocator, .params = argon2.Params.interactive_2id }, &out_buf, self.io);
         
-        self.users_lock.lockUncancelable(self.io);
-        defer self.users_lock.unlock(self.io);
-
-        try self.users.put(try self.allocator.dupe(u8, username), .{
-            .username = try self.allocator.dupe(u8, username),
-            .password_hash = try self.allocator.dupe(u8, hash),
-        });
+        try db.insertUser(username, hash, real_name, is_admin, null);
     }
 
     pub fn verifyCredentials(self: *AuthContext, username: []const u8, password: []const u8) bool {
-        self.users_lock.lockSharedUncancelable(self.io);
-        const user_opt = self.users.get(username);
-        self.users_lock.unlockShared(self.io);
-
+        const user_opt = db.getUser(username, self.allocator) catch return false;
         const user = user_opt orelse return false;
-        // argon2.strVerify needs scratch memory; give it a local arena so it
-        // doesn't race on the shared GPA under concurrent login requests.
+        defer {
+            self.allocator.free(user.username);
+            self.allocator.free(user.password_hash);
+            self.allocator.free(user.real_name);
+            if (user.avatar_ext) |ext| self.allocator.free(ext);
+        }
+
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
         argon2.strVerify(user.password_hash, password, .{ .allocator = arena.allocator() }, self.io) catch {
@@ -183,31 +180,57 @@ pub const AuthContext = struct {
     }
 
     pub fn deleteUser(self: *AuthContext, username: []const u8) !void {
-        self.users_lock.lockUncancelable(self.io);
-        defer self.users_lock.unlock(self.io);
-        if (self.users.get(username)) |user| {
-            _ = self.users.remove(username);
-            self.allocator.free(user.username); // username is the key as well
-            self.allocator.free(user.password_hash);
-            try self.saveUsersInternal();
-        } else {
-            return error.UserNotFound;
-        }
+        _ = self;
+        try db.deleteUser(username);
     }
 
-    pub fn getUsers(self: *AuthContext, allocator: std.mem.Allocator) ![]const []const u8 {
-        self.users_lock.lockSharedUncancelable(self.io);
-        defer self.users_lock.unlockShared(self.io);
-
-        var user_list = std.ArrayList([]const u8).empty;
+    pub fn getUsers(self: *AuthContext, allocator: std.mem.Allocator) ![]PublicUser {
+        _ = self;
+        const db_users = try db.getUsers(allocator);
+        var user_list = std.ArrayList(PublicUser).empty;
         errdefer user_list.deinit(allocator);
 
-        var it = self.users.iterator();
-        while (it.next()) |entry| {
-            try user_list.append(allocator, try allocator.dupe(u8, entry.key_ptr.*));
+        for (db_users) |u| {
+            try user_list.append(allocator, .{
+                .username = u.username,
+                .real_name = u.real_name,
+                .is_admin = u.is_admin,
+                .avatar_ext = u.avatar_ext,
+            });
+            allocator.free(u.password_hash); // Free what we don't need
         }
+        allocator.free(db_users);
 
         return user_list.toOwnedSlice(allocator);
+    }
+
+    pub fn isAdmin(self: *AuthContext, username: []const u8) bool {
+        if (db.getUser(username, self.allocator) catch null) |user| {
+            defer {
+                self.allocator.free(user.username);
+                self.allocator.free(user.password_hash);
+                self.allocator.free(user.real_name);
+                if (user.avatar_ext) |ext| self.allocator.free(ext);
+            }
+            return user.is_admin;
+        }
+        return false;
+    }
+
+    pub fn editUser(self: *AuthContext, username: []const u8, new_password: ?[]const u8, new_real_name: ?[]const u8, new_is_admin: ?bool, new_avatar_ext: ?[]const u8) !void {
+        var new_hash_opt: ?[]const u8 = null;
+        if (new_password) |pwd| {
+            if (pwd.len > 0) {
+                var out_buf: [128]u8 = undefined;
+                const hash = try argon2.strHash(pwd, .{ .allocator = self.allocator, .params = argon2.Params.interactive_2id }, &out_buf, self.io);
+                new_hash_opt = try self.allocator.dupe(u8, hash);
+            }
+        }
+        defer {
+            if (new_hash_opt) |hash| self.allocator.free(hash);
+        }
+        
+        try db.updateUser(username, new_hash_opt, new_real_name, new_is_admin, new_avatar_ext);
     }
 
     pub fn generateJwt(self: *AuthContext, username: []const u8) ![]u8 {

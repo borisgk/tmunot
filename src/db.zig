@@ -1,6 +1,7 @@
 const core = @import("db/core.zig");
 const photos = @import("db/photos.zig");
 const albums = @import("db/albums.zig");
+const users = @import("db/users.zig");
 
 // From core
 pub const init = core.init;
@@ -29,3 +30,13 @@ pub const getAlbum = albums.getAlbum;
 pub const getAlbumPhotos = albums.getAlbumPhotos;
 pub const deleteAlbum = albums.deleteAlbum;
 pub const deleteAlbumPhoto = albums.deleteAlbumPhoto;
+
+// From users
+pub const UserRecord = users.UserRecord;
+pub const initUsersDb = users.initUsersDb;
+pub const deinitUsersDb = users.deinitUsersDb;
+pub const insertUser = users.insertUser;
+pub const updateUser = users.updateUser;
+pub const deleteUser = users.deleteUser;
+pub const getUser = users.getUser;
+pub const getUsers = users.getUsers;

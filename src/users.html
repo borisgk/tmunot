@@ -44,18 +44,115 @@
         .form-row > .form-group {
             flex: 1;
         }
-        .users-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 16px;
+        .users-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 24px;
+            margin-top: 24px;
         }
-        .users-table th, .users-table td {
-            text-align: left;
-            padding: 12px;
-            border-bottom: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
+        .user-card {
+            background: var(--md-sys-color-surface-container);
+            border-radius: var(--md-sys-shape-corner-large);
+            padding: 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            position: relative;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
-        .users-table th {
+        .user-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--md-sys-color-primary-container);
+            color: var(--md-sys-color-on-primary-container);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
             font-weight: 500;
+            text-transform: uppercase;
+        }
+        .user-info {
+            flex: 1;
+            overflow: hidden;
+        }
+        .user-name {
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: var(--md-sys-color-on-surface);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .user-subtitle {
+            font-size: 0.9rem;
+            color: var(--md-sys-color-on-surface-variant);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .user-action-btn {
+            background: none;
+            border: none;
+            color: var(--md-sys-color-on-surface-variant);
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s;
+        }
+        .user-action-btn:hover {
+            background: var(--md-sys-color-surface-container-high);
+        }
+        .user-delete-btn {
+            color: var(--md-sys-color-error);
+        }
+        .user-delete-btn:hover {
+            background: var(--md-sys-color-error-container);
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .modal-overlay.show {
+            display: flex;
+            opacity: 1;
+        }
+        .modal-surface {
+            background: var(--md-sys-color-surface-container-high);
+            border-radius: var(--md-sys-shape-corner-extra-large);
+            padding: 32px;
+            width: 100%;
+            max-width: 400px;
+            transform: translateY(20px);
+            transition: transform 0.2s;
+        }
+        .modal-overlay.show .modal-surface {
+            transform: translateY(0);
+        }
+        .modal-surface h2 {
+            margin-top: 0;
+            margin-bottom: 24px;
+            color: var(--md-sys-color-primary);
+        }
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 32px;
         }
         .action-btn {
             background: none;
@@ -123,32 +220,72 @@
 
     <main class="admin-container">
         <section class="admin-section">
-            <h2>User Management</h2>
-            <table class="users-table">
-                <thead>
-                    <tr>
-                        <th>Username</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="users-tbody">
-                    <!-- Loaded dynamically -->
-                </tbody>
-            </table>
-
-            <h3 style="margin-top: 24px;">Add New User</h3>
-            <form id="add-user-form" class="form-row" style="align-items: flex-end;">
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label>Username</label>
-                    <input type="text" id="new-username" required>
-                </div>
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label>Password</label>
-                    <input type="password" id="new-password" required>
-                </div>
-                <button type="submit" class="btn-primary">Add User</button>
-            </form>
+            <div id="users-grid" class="users-grid">
+                <!-- Loaded dynamically -->
+            </div>
         </section>
+
+        <!-- Floating Action Button -->
+        <button id="fab-add-user" class="md-fab" title="Add User">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" fill="currentColor">
+                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+            </svg>
+        </button>
+
+        <!-- Add User Modal -->
+        <div id="add-user-modal" class="modal-overlay">
+            <div class="modal-surface">
+                <h2>Add New User</h2>
+                <form id="add-user-form">
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="new-username" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Real Name</label>
+                        <input type="text" id="new-real-name">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="new-password" required>
+                    </div>
+                    <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="new-is-admin" style="width: auto;">
+                        <label style="margin: 0;">Is Admin?</label>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" id="btn-cancel-add" class="action-btn" style="color: var(--md-sys-color-on-surface-variant); margin-right: 16px;">Cancel</button>
+                        <button type="submit" class="btn-primary">Add User</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Edit User Modal -->
+        <div id="edit-user-modal" class="modal-overlay">
+            <div class="modal-surface">
+                <h2>Edit User</h2>
+                <form id="edit-user-form">
+                    <input type="hidden" id="edit-username">
+                    <div class="form-group">
+                        <label>Real Name</label>
+                        <input type="text" id="edit-real-name">
+                    </div>
+                    <div class="form-group">
+                        <label>New Password (leave blank to keep current)</label>
+                        <input type="password" id="edit-password">
+                    </div>
+                    <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="edit-is-admin" style="width: auto;">
+                        <label style="margin: 0;">Is Admin?</label>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" id="btn-cancel-edit" class="action-btn" style="color: var(--md-sys-color-on-surface-variant); margin-right: 16px;">Cancel</button>
+                        <button type="submit" class="btn-primary">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </main>
 
     <div id="toast" class="toast">Saved successfully.</div>
