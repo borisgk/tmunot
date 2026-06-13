@@ -1,34 +1,30 @@
 const std = @import("std");
 const db = @import("db.zig");
 
-pub fn extractVideoMetadata(allocator: std.mem.Allocator, file_path: []const u8, uuid: []const u8) !db.VideoMetadataRecord {
+pub fn extractVideoMetadata(allocator: std.mem.Allocator, io: std.Io, file_path: []const u8, uuid: []const u8) !db.VideoMetadataRecord {
     var record = db.VideoMetadataRecord{
         .uuid = try allocator.dupe(u8, uuid),
     };
 
-    const argv = [_][]const u8{
-        "ffprobe",
-        "-v",
-        "quiet",
-        "-print_format",
-        "json",
-        "-show_format",
-        "-show_streams",
-        file_path,
+    const res = std.process.run(allocator, io, .{
+        .argv = &[_][]const u8{
+            "ffprobe",
+            "-v", "quiet",
+            "-print_format", "json",
+            "-show_format",
+            "-show_streams",
+            file_path,
+        },
+    }) catch |err| {
+        std.debug.print("Failed to run ffprobe: {}\n", .{err});
+        return record;
     };
+    defer {
+        allocator.free(res.stdout);
+        allocator.free(res.stderr);
+    }
 
-    var child = std.process.Child.init(&argv, allocator);
-    child.stdout_behavior = .Pipe;
-    child.stderr_behavior = .Ignore;
-
-    try child.spawn();
-
-    const stdout = try child.stdout.?.readToEndAlloc(allocator, 10 * 1024 * 1024);
-    defer allocator.free(stdout);
-
-    _ = try child.wait();
-
-    const parsed = std.json.parseFromSlice(std.json.Value, allocator, stdout, .{}) catch |err| {
+    const parsed = std.json.parseFromSlice(std.json.Value, allocator, res.stdout, .{}) catch |err| {
         std.debug.print("Failed to parse ffprobe json: {}\n", .{err});
         return record;
     };

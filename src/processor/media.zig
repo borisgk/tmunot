@@ -494,7 +494,7 @@ pub fn processJob(job: *queue.FileJob) void {
 
 
     if (is_video) {
-        const video_record = video_meta.extractVideoMetadata(job.allocator, orig_path, job.uuid) catch |err| {
+        const video_record = video_meta.extractVideoMetadata(job.allocator, io, orig_path, job.uuid) catch |err| {
             std.debug.print("Failed to extract video metadata: {}\n", .{err});
             return;
         };
