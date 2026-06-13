@@ -236,6 +236,8 @@ pub fn processImage(job: *queue.FileJob, orig_path_ptr: *[]u8, t_start: f64) !vo
                 @as(c_int, target.width),
                 "height",
                 @as(c_int, target.height),
+                "auto_rotate",
+                @as(c_int, 1),
                 @as(?*anyopaque, null),
             );
             const t1 = vips.getWallMillis();
@@ -260,6 +262,8 @@ pub fn processImage(job: *queue.FileJob, orig_path_ptr: *[]u8, t_start: f64) !vo
                 @as(c_int, target.width),
                 "height",
                 @as(c_int, target.height),
+                "auto_rotate",
+                @as(c_int, 1),
                 @as(?*anyopaque, null),
             );
             const t1 = vips.getWallMillis();
