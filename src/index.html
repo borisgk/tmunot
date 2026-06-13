@@ -63,6 +63,31 @@
         </div>
     </div>
 
+    <!-- Profile Modal -->
+    <div id="profile-modal" class="lightbox" onclick="closeProfileModal(event)">
+        <div class="modal-content" style="background: var(--md-sys-color-surface-container); padding: 24px; border-radius: 28px; width: 400px; max-width: 90%; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
+            <h2 style="margin-top: 0; color: var(--md-sys-color-on-surface); margin-bottom: 16px;">My Profile</h2>
+            <form id="profile-form">
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; font-weight: 500; margin-bottom: 4px;">Avatar</label>
+                    <input type="file" id="profile-avatar-upload" accept="image/png, image/jpeg, image/webp" style="width: 100%; border: 1px solid var(--md-sys-color-outline); border-radius: 8px; padding: 8px; box-sizing: border-box;">
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; font-weight: 500; margin-bottom: 4px;">Real Name</label>
+                    <input type="text" id="profile-real-name" style="width: 100%; border: 1px solid var(--md-sys-color-outline); border-radius: 8px; padding: 12px; box-sizing: border-box; background: transparent; color: inherit;">
+                </div>
+                <div style="margin-bottom: 24px;">
+                    <label style="display: block; font-weight: 500; margin-bottom: 4px;">New Password (leave blank to keep current)</label>
+                    <input type="password" id="profile-password" style="width: 100%; border: 1px solid var(--md-sys-color-outline); border-radius: 8px; padding: 12px; box-sizing: border-box; background: transparent; color: inherit;">
+                </div>
+                <div style="text-align: right;">
+                    <button type="button" class="md-menu-item" style="display: inline-block; width: auto; margin-right: 8px; background: transparent; border: none; cursor: pointer; color: var(--md-sys-color-on-surface);" onclick="closeProfileModal({target:{id:'profile-modal'}})">Cancel</button>
+                    <button type="submit" style="background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer;">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <a href="/upload" class="md-fab" title="Upload Images">+</a>
 
     <script src="/script.js"></script>

@@ -181,6 +181,54 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
         return true;
     }
 
+    if (req.head.method == .GET and std.mem.startsWith(u8, target, "/avatars/")) {
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const alloc = arena.allocator();
+        
+        const filename = try server.decodeUrl(alloc, target[9..]);
+        const file_path = try std.fmt.allocPrint(alloc, "data/avatars/{s}", .{ filename });
+        
+        var file = std.Io.Dir.cwd().openFile(io, file_path, .{}) catch {
+            try req.respond("Not Found", .{ .status = .not_found });
+            return true;
+        };
+        defer file.close(io);
+
+        const stat = file.stat(io) catch {
+            try req.respond("Internal Error", .{ .status = .internal_server_error });
+            return true;
+        };
+
+        var mime_type: []const u8 = "image/jpeg";
+        if (std.mem.endsWith(u8, filename, ".png")) mime_type = "image/png"
+        else if (std.mem.endsWith(u8, filename, ".webp")) mime_type = "image/webp";
+
+        var send_buffer: [8192]u8 = undefined;
+        var response = req.respondStreaming(&send_buffer, .{
+            .content_length = stat.size,
+            .respond_options = .{
+                .extra_headers = &.{
+                    .{ .name = "Content-Type", .value = mime_type },
+                    .{ .name = "Cache-Control", .value = "public, max-age=31536000" },
+                },
+            },
+        }) catch return true;
+
+        var file_reader = file.reader(io, &.{});
+        var chunk_buf: [65536]u8 = undefined;
+        var bytes_left: u64 = stat.size;
+        while (bytes_left > 0) {
+            const to_read = @min(bytes_left, chunk_buf.len);
+            const read_amt = file_reader.interface.readSliceShort(chunk_buf[0..to_read]) catch break;
+            if (read_amt == 0) break;
+            response.writer.writeAll(chunk_buf[0..read_amt]) catch break;
+            bytes_left -= read_amt;
+        }
+        response.end() catch {};
+        return true;
+    }
+
     if (std.mem.startsWith(u8, target, "/fonts/")) {
         const font_name = target[7..];
         if (std.mem.eql(u8, font_name, "RobotoFlex-VariableFont.woff2")) {

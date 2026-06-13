@@ -8,6 +8,7 @@ const server_gallery = @import("server/gallery.zig");
 const server_auth = @import("server/auth.zig");
 const server_upload = @import("server/upload.zig");
 const server_admin = @import("server/admin.zig");
+const server_profile = @import("server/profile.zig");
 
 // Helper to decode URL-encoded string (modifies in place, returns slice, or allocates)
 pub fn decodeUrl(allocator: std.mem.Allocator, encoded: []const u8) ![]u8 {
@@ -347,6 +348,11 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
             return;
         }
 
+        if (!auth_ctx.isAdmin(username.?)) {
+            try req.respond("Forbidden", .{ .status = .forbidden });
+            return;
+        }
+
         try req.respond(@embedFile("users_gen.html"), .{
             .extra_headers = &.{
                 .{ .name = "content-type", .value = "text/html" },
@@ -361,7 +367,20 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
             try req.respond("Unauthorized", .{ .status = .unauthorized });
             return;
         }
+        if (!auth_ctx.isAdmin(username.?)) {
+            try req.respond("Forbidden", .{ .status = .forbidden });
+            return;
+        }
         try server_admin.handleAdminApi(req, io, req_alloc, auth_ctx, config, username.?);
+        return;
+    }
+
+    if (std.mem.startsWith(u8, target, "/api/users/me")) {
+        if (!is_authenticated or username == null) {
+            try req.respond("Unauthorized", .{ .status = .unauthorized });
+            return;
+        }
+        try server_profile.handleProfileApi(req, io, req_alloc, auth_ctx, username.?, target);
         return;
     }
 

@@ -268,13 +268,36 @@ pub fn generateAlbumsHtml(allocator: std.mem.Allocator, username: []const u8) ![
 
     try html.appendSlice(alloc, part1);
 
-    const logout_html = 
-        \\  <div style="display: flex; align-items: center; gap: 8px;">
+    const user_opt = try db.getUser(username, alloc);
+    const is_admin = if (user_opt) |u| u.is_admin else false;
+    const avatar_ext = if (user_opt) |u| u.avatar_ext else null;
+
+    var avatar_html: []const u8 = "";
+    if (avatar_ext) |ext| {
+        avatar_html = try std.fmt.allocPrint(alloc,
+            "<img src=\"/avatars/{s}.{s}\" class=\"md-header-logout-icon-btn\" style=\"border-radius: 50%; object-fit: cover; cursor: pointer; padding: 0; width: 40px; height: 40px;\" onclick=\"openProfileModal()\" alt=\"Profile\">",
+            .{ username, ext }
+        );
+    } else {
+        avatar_html = 
+            \\<button class="md-header-logout-icon-btn" style="border-radius: 50%; background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); font-weight: 500;" onclick="openProfileModal()" title="Profile">
+            \\    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            \\</button>
+        ;
+    }
+
+    const admin_btn = if (is_admin) 
         \\      <a href="/users" class="md-header-logout-icon-btn" title="User Management" aria-label="User Management">
         \\          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-        \\              <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.05-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62-.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.22-.07.49-.12.61l2.03 1.58c-.04.3-.06.61-.06.94s.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+        \\              <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.05-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.22-.07.49-.12.61l2.03 1.58c-.04.3-.06.61-.06.94s.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
         \\          </svg>
         \\      </a>
+    else "";
+
+    const logout_html = try std.fmt.allocPrint(alloc,
+        \\  <div style="display: flex; align-items: center; gap: 8px;">
+        \\{s}
+        \\{s}
         \\      <form method="POST" action="/logout" style="margin: 0;">
         \\          <button type="submit" class="md-header-logout-icon-btn" title="Logout" aria-label="Logout">
         \\              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
@@ -283,7 +306,8 @@ pub fn generateAlbumsHtml(allocator: std.mem.Allocator, username: []const u8) ![
         \\          </button>
         \\      </form>
         \\  </div>
-    ;
+        , .{ admin_btn, avatar_html }
+    );
 
     try html.appendSlice(alloc, logout_html);
     try html.appendSlice(alloc, part2);
@@ -366,13 +390,37 @@ pub fn generateAlbumDetailHtml(allocator: std.mem.Allocator, username: []const u
     } else "";
 
     // 3. Selection actions & Logout HTML
-    const logout_html = 
-        \\  <div style="display: flex; align-items: center; gap: 8px;">
+    // Retrieve current user details for the top bar
+    const user_opt = try db.getUser(username, alloc);
+    const is_admin = if (user_opt) |u| u.is_admin else false;
+    const avatar_ext = if (user_opt) |u| u.avatar_ext else null;
+
+    var avatar_html: []const u8 = "";
+    if (avatar_ext) |ext| {
+        avatar_html = try std.fmt.allocPrint(alloc,
+            "<img src=\"/avatars/{s}.{s}\" class=\"md-header-logout-icon-btn\" style=\"border-radius: 50%; object-fit: cover; cursor: pointer; padding: 0; width: 40px; height: 40px;\" onclick=\"openProfileModal()\" alt=\"Profile\">",
+            .{ username, ext }
+        );
+    } else {
+        avatar_html = 
+            \\<button class="md-header-logout-icon-btn" style="border-radius: 50%; background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); font-weight: 500;" onclick="openProfileModal()" title="Profile">
+            \\    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            \\</button>
+        ;
+    }
+
+    const admin_btn = if (is_admin) 
         \\      <a href="/users" class="md-header-logout-icon-btn" title="User Management" aria-label="User Management">
         \\          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
         \\              <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.05-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.22-.07.49-.12.61l2.03 1.58c-.04.3-.06.61-.06.94s.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
         \\          </svg>
         \\      </a>
+    else "";
+
+    const logout_html = try std.fmt.allocPrint(alloc,
+        \\  <div style="display: flex; align-items: center; gap: 8px;">
+        \\{s}
+        \\{s}
         \\      <form method="POST" action="/logout" style="margin: 0;">
         \\          <button type="submit" class="md-header-logout-icon-btn" title="Logout" aria-label="Logout">
         \\              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
@@ -381,7 +429,8 @@ pub fn generateAlbumDetailHtml(allocator: std.mem.Allocator, username: []const u
         \\          </button>
         \\      </form>
         \\  </div>
-    ;
+        , .{ admin_btn, avatar_html }
+    );
 
     const selection_actions_html =
         \\  <div id="selection-actions" class="selection-actions-container" style="display: none;">

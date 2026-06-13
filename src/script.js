@@ -734,3 +734,100 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+/* --- Profile Modal Logic --- */
+function openProfileModal() {
+    const modal = document.getElementById('profile-modal');
+    if (!modal) return;
+    
+    // Reset form
+    document.getElementById('profile-form').reset();
+    
+    // Fetch current user data
+    fetch('/api/users/me')
+        .then(res => {
+            if (!res.ok) throw new Error("Failed to fetch profile");
+            return res.json();
+        })
+        .then(user => {
+            document.getElementById('profile-real-name').value = user.real_name || user.username;
+        })
+        .catch(err => {
+            console.error(err);
+            showToast("Failed to load profile data.");
+        });
+
+    modal.style.display = 'flex';
+    void modal.offsetWidth; // force reflow
+    modal.classList.add('active');
+}
+
+function closeProfileModal(e) {
+    if (e.target.id === 'profile-modal') {
+        const modal = document.getElementById('profile-modal');
+        modal.classList.remove('active');
+        setTimeout(() => {
+            if (!modal.classList.contains('active')) {
+                modal.style.display = 'none';
+            }
+        }, 300);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const profileForm = document.getElementById('profile-form');
+    if (profileForm) {
+        profileForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const submitBtn = profileForm.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Saving...';
+            
+            try {
+                // Update text fields
+                const rn = document.getElementById('profile-real-name').value.trim();
+                const pwd = document.getElementById('profile-password').value;
+                const payload = {};
+                if (rn) payload.real_name = rn;
+                if (pwd) payload.password = pwd;
+                
+                if (Object.keys(payload).length > 0) {
+                    const res = await fetch('/api/users/me', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (!res.ok) throw new Error("Failed to update profile info");
+                }
+                
+                // Update avatar
+                const avatarInput = document.getElementById('profile-avatar-upload');
+                if (avatarInput.files && avatarInput.files.length > 0) {
+                    const file = avatarInput.files[0];
+                    const res = await fetch('/api/users/me/avatar', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': file.type
+                        },
+                        body: file
+                    });
+                    if (!res.ok) throw new Error("Failed to upload avatar");
+                }
+                
+                showToast("Profile updated successfully!");
+                closeProfileModal({target: {id: 'profile-modal'}});
+                
+                // Reload to show new avatar
+                setTimeout(() => window.location.reload(), 1000);
+                
+            } catch (err) {
+                console.error(err);
+                alert(err.message || "Error updating profile.");
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Save';
+            }
+        });
+    }
+});
+
