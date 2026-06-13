@@ -26,7 +26,7 @@ jobs:
           version: master
 
       - name: Build
-        run: zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-gnu
+        run: zig build -Doptimize=ReleaseSafe -Dcpu=baseline
 
       - name: Package Release
         run: |
