@@ -27,13 +27,19 @@ const FfprobeResult = struct {
     format: ?FfprobeFormat = null,
 };
 fn makeDirPathSync(allocator: std.mem.Allocator, target_dir: []const u8) !void {
+    if (target_dir.len == 0) return;
+
     var it = std.mem.splitScalar(u8, target_dir, '/');
     var current_path = std.ArrayList(u8).empty;
     defer current_path.deinit(allocator);
 
+    if (target_dir[0] == '/') {
+        try current_path.append(allocator, '/');
+    }
+
     while (it.next()) |component| {
         if (component.len == 0) continue;
-        if (current_path.items.len > 0) {
+        if (current_path.items.len > 0 and current_path.items[current_path.items.len - 1] != '/') {
             try current_path.append(allocator, '/');
         }
         try current_path.appendSlice(allocator, component);
