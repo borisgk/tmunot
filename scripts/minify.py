@@ -123,8 +123,14 @@ def main():
     # Read CSS and JS
     with open(os.path.join(src_dir, 'styles.css'), 'r', encoding='utf-8') as f:
         css = f.read()
-    with open(os.path.join(src_dir, 'script.js'), 'r', encoding='utf-8') as f:
-        js = f.read()
+        
+    js_parts = []
+    for js_file in ['core.js', 'gallery.js', 'modals.js']:
+        js_path = os.path.join(src_dir, js_file)
+        if os.path.exists(js_path):
+            with open(js_path, 'r', encoding='utf-8') as f:
+                js_parts.append(f.read())
+    js = "\n".join(js_parts)
         
     min_css = minify_css(css)
     min_js = minify_js(js)
