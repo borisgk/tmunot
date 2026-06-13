@@ -10,8 +10,14 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 echo "Updating system and installing dependencies..."
-apt-get update
-apt-get install -y curl tar libvips-dev libexif-dev libsqlite3-dev
+if command -v apt-get >/dev/null 2>&1; then
+    apt-get update
+    apt-get install -y curl tar libvips-dev libexif-dev libsqlite3-dev
+elif command -v pacman >/dev/null 2>&1; then
+    pacman -Sy --noconfirm curl tar libvips libexif sqlite
+else
+    echo "Warning: Neither apt-get nor pacman found. Please ensure curl, tar, libvips, libexif, and sqlite3 are installed."
+fi
 
 echo "Fetching latest release from GitHub..."
 # Get the download URL for the latest release asset
