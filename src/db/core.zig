@@ -69,6 +69,8 @@ pub extern "c" fn sqlite3_column_int(pStmt: ?*sqlite3_stmt, iCol: c_int) c_int;
 
 pub extern "c" fn sqlite3_column_type(pStmt: ?*sqlite3_stmt, iCol: c_int) c_int;
 
+pub extern "c" fn sqlite3_busy_timeout(db: ?*sqlite3, ms: c_int) c_int;
+
 pub var db_mutex = std.Io.Mutex.init;
 pub var user_dbs: std.StringHashMap(*sqlite3) = undefined;
 pub var global_io: ?std.Io = null;
@@ -110,6 +112,10 @@ pub fn getDb(username: []const u8) !*sqlite3 {
     }
 
     const db = temp_db.?;
+
+    // Set a 5-second busy timeout so SQLite retries on SQLITE_BUSY instead of failing immediately.
+    // This prevents transient write-lock contention errors when the background worker is also writing.
+    _ = sqlite3_busy_timeout(db, 5000);
 
     var err_msg: [*c]u8 = null;
     const wal_rc = sqlite3_exec(db, "PRAGMA journal_mode=WAL;", null, null, &err_msg);

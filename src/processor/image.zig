@@ -153,8 +153,8 @@ pub fn processImage(job: *queue.FileJob, orig_path_ptr: *[]u8, t_start: f64) !vo
         .height = height,
     };
 
-    db.insertPhoto(record) catch |err| {
-        std.debug.print("Failed to insert photo metadata: {}\n", .{err});
+    db.pushDbInsertPhoto(record) catch |err| {
+        std.debug.print("Failed to queue photo insert: {}\n", .{err});
         return error.DbInsertFailed;
     };
 
@@ -172,8 +172,8 @@ pub fn processImage(job: *queue.FileJob, orig_path_ptr: *[]u8, t_start: f64) !vo
         }
         job.allocator.free(full_exif_record.uuid);
     }
-    db.insertPhotoExif(job.username, full_exif_record) catch |err| {
-        std.debug.print("Failed to save EXIF data: {}\n", .{err});
+    db.pushDbInsertPhotoExif(job.username, full_exif_record) catch |err| {
+        std.debug.print("Failed to queue EXIF insert: {}\n", .{err});
     };
 
     const t_db = vips.getWallMillis();

@@ -2,6 +2,7 @@ const core = @import("db/core.zig");
 const photos = @import("db/photos.zig");
 const albums = @import("db/albums.zig");
 const users = @import("db/users.zig");
+pub const write_queue = @import("db/write_queue.zig");
 
 // From core
 pub const init = core.init;
@@ -45,3 +46,8 @@ pub const updateUser = users.updateUser;
 pub const deleteUser = users.deleteUser;
 pub const getUser = users.getUser;
 pub const getUsers = users.getUsers;
+
+// DB write queue (worker OS threads must use these instead of direct DB calls)
+pub const pushDbInsertPhoto         = write_queue.pushInsertPhoto;
+pub const pushDbInsertPhotoExif     = write_queue.pushInsertPhotoExif;
+pub const pushDbInsertVideoMetadata = write_queue.pushInsertVideoMetadata;
