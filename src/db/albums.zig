@@ -92,7 +92,9 @@ pub fn insertAlbumPhoto(username: []const u8, record: AlbumPhotoRecord) !void {
     ;
 
     var stmt: ?*core.sqlite3_stmt = null;
-    if (core.sqlite3_prepare_v2(db, insert_sql, -1, &stmt, null) != core.SQLITE_OK) {
+    const prep_rc = core.sqlite3_prepare_v2(db, insert_sql, -1, &stmt, null);
+    if (prep_rc != core.SQLITE_OK) {
+        std.debug.print("[ALBUM-DB] ERROR: sqlite3_prepare_v2 failed for insertAlbumPhoto (photo: {s}): code {d}, msg: {s}\n", .{ record.photo_uuid, prep_rc, core.sqlite3_errmsg(db) });
         return error.SqlitePrepareFailed;
     }
     defer _ = core.sqlite3_finalize(stmt);
@@ -103,28 +105,40 @@ pub fn insertAlbumPhoto(username: []const u8, record: AlbumPhotoRecord) !void {
 
     const rc = core.sqlite3_step(stmt);
     if (rc != core.SQLITE_DONE) {
-        std.debug.print("Failed to insert album photo: {s}\n", .{core.sqlite3_errmsg(db)});
+        std.debug.print("[ALBUM-DB] ERROR: sqlite3_step failed for insertAlbumPhoto (photo: {s}): code {d}, msg: {s}\n", .{ record.photo_uuid, rc, core.sqlite3_errmsg(db) });
         return error.SqliteInsertFailed;
     }
     
     // Auto-set cover photo if it's the first photo
     const check_sql = "SELECT cover_photo_uuid FROM albums WHERE uuid = ?;";
     var check_stmt: ?*core.sqlite3_stmt = null;
-    if (core.sqlite3_prepare_v2(db, check_sql, -1, &check_stmt, null) == core.SQLITE_OK) {
+    const check_prep_rc = core.sqlite3_prepare_v2(db, check_sql, -1, &check_stmt, null);
+    if (check_prep_rc == core.SQLITE_OK) {
         defer _ = core.sqlite3_finalize(check_stmt);
         _ = core.sqlite3_bind_text(check_stmt, 1, record.album_uuid.ptr, @intCast(record.album_uuid.len), core.SQLITE_TRANSIENT);
-        if (core.sqlite3_step(check_stmt) == core.SQLITE_ROW) {
+        const check_step_rc = core.sqlite3_step(check_stmt);
+        if (check_step_rc == core.SQLITE_ROW) {
             if (core.sqlite3_column_type(check_stmt, 0) == core.SQLITE_NULL) {
                 const update_sql = "UPDATE albums SET cover_photo_uuid = ? WHERE uuid = ?;";
                 var update_stmt: ?*core.sqlite3_stmt = null;
-                if (core.sqlite3_prepare_v2(db, update_sql, -1, &update_stmt, null) == core.SQLITE_OK) {
+                const update_prep_rc = core.sqlite3_prepare_v2(db, update_sql, -1, &update_stmt, null);
+                if (update_prep_rc == core.SQLITE_OK) {
                     defer _ = core.sqlite3_finalize(update_stmt);
                     _ = core.sqlite3_bind_text(update_stmt, 1, record.photo_uuid.ptr, @intCast(record.photo_uuid.len), core.SQLITE_TRANSIENT);
                     _ = core.sqlite3_bind_text(update_stmt, 2, record.album_uuid.ptr, @intCast(record.album_uuid.len), core.SQLITE_TRANSIENT);
-                    _ = core.sqlite3_step(update_stmt);
+                    const update_step_rc = core.sqlite3_step(update_stmt);
+                    if (update_step_rc != core.SQLITE_DONE) {
+                        std.debug.print("[ALBUM-DB] WARNING: Auto-cover UPDATE failed for album '{s}': code {d}, msg: {s}\n", .{ record.album_uuid, update_step_rc, core.sqlite3_errmsg(db) });
+                    }
+                } else {
+                    std.debug.print("[ALBUM-DB] WARNING: Auto-cover UPDATE prepare failed for album '{s}': code {d}, msg: {s}\n", .{ record.album_uuid, update_prep_rc, core.sqlite3_errmsg(db) });
                 }
             }
+        } else if (check_step_rc != core.SQLITE_DONE) {
+            std.debug.print("[ALBUM-DB] WARNING: Auto-cover SELECT step failed for album '{s}': code {d}, msg: {s}\n", .{ record.album_uuid, check_step_rc, core.sqlite3_errmsg(db) });
         }
+    } else {
+        std.debug.print("[ALBUM-DB] WARNING: Auto-cover SELECT prepare failed for album '{s}': code {d}, msg: {s}\n", .{ record.album_uuid, check_prep_rc, core.sqlite3_errmsg(db) });
     }
 }
 
@@ -229,7 +243,11 @@ pub fn getAlbum(username: []const u8, album_uuid: []const u8, allocator: std.mem
     ;
 
     var stmt: ?*core.sqlite3_stmt = null;
-    if (core.sqlite3_prepare_v2(db, sql, -1, &stmt, null) != core.SQLITE_OK) return error.SqlitePrepareFailed;
+    const prep_rc = core.sqlite3_prepare_v2(db, sql, -1, &stmt, null);
+    if (prep_rc != core.SQLITE_OK) {
+        std.debug.print("[ALBUM-DB] ERROR: sqlite3_prepare_v2 failed in getAlbum (album: {s}): code {d}, msg: {s}\n", .{ album_uuid, prep_rc, core.sqlite3_errmsg(db) });
+        return error.SqlitePrepareFailed;
+    }
     defer _ = core.sqlite3_finalize(stmt);
 
     _ = core.sqlite3_bind_text(stmt, 1, username.ptr, @intCast(username.len), core.SQLITE_TRANSIENT);
@@ -259,6 +277,7 @@ pub fn getAlbum(username: []const u8, album_uuid: []const u8, allocator: std.mem
     } else if (rc == core.SQLITE_DONE) {
         return null;
     } else {
+        std.debug.print("[ALBUM-DB] ERROR: sqlite3_step failed in getAlbum (album: {s}): code {d}, msg: {s}\n", .{ album_uuid, rc, core.sqlite3_errmsg(db) });
         return error.SqliteSelectFailed;
     }
 }

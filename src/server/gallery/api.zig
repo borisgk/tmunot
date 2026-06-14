@@ -101,9 +101,19 @@ pub fn handleAddPhotosToAlbum(req: *std.http.Server.Request, allocator: std.mem.
     };
     defer parsed.deinit();
 
+    std.debug.print("[ALBUM-ADD] Starting add to album '{s}' for user '{s}', photo count: {d}\n", .{ album_uuid, username, parsed.value.photos.len });
+
     // Verify album exists and belongs to the user
-    const album_record = try db.getAlbum(username, album_uuid, allocator);
+    const album_record = db.getAlbum(username, album_uuid, allocator) catch |err| {
+        std.debug.print("[ALBUM-ADD] ERROR: getAlbum failed for album '{s}': {}\n", .{ album_uuid, err });
+        try req.respond("{\"error\":\"Internal Server Error during album lookup\"}", .{
+            .status = .internal_server_error,
+            .extra_headers = &.{ .{ .name = "content-type", .value = "application/json" } },
+        });
+        return;
+    };
     if (album_record == null) {
+        std.debug.print("[ALBUM-ADD] ERROR: Album '{s}' not found\n", .{ album_uuid });
         try req.respond("Album Not Found", .{ .status = .not_found });
         return;
     }
@@ -115,14 +125,17 @@ pub fn handleAddPhotosToAlbum(req: *std.http.Server.Request, allocator: std.mem.
         record.album_uuid = album_uuid;
         record.photo_uuid = photo_uuid;
         record.added_at = current_time.iso_str;
+        
+        std.debug.print("[ALBUM-ADD] Inserting photo '{s}' into album '{s}'\n", .{ photo_uuid, album_uuid });
         db.insertAlbumPhoto(username, record) catch |err| {
-            std.debug.print("Failed to add photo {s} to album {s}: {}\n", .{ photo_uuid, album_uuid, err });
+            std.debug.print("[ALBUM-ADD] ERROR: Failed to add photo '{s}' to album '{s}': {}\n", .{ photo_uuid, album_uuid, err });
             try req.respond("{\"error\":\"Failed to add photos to album\"}", .{
                 .status = .internal_server_error,
                 .extra_headers = &.{ .{ .name = "content-type", .value = "application/json" } },
             });
             return;
         };
+        std.debug.print("[ALBUM-ADD] SUCCESS: Photo '{s}' added to album '{s}'\n", .{ photo_uuid, album_uuid });
     }
 
     try req.respond("{\"status\":\"ok\"}", .{
