@@ -7,15 +7,7 @@ const auth = @import("auth.zig");
 const db = @import("db.zig");
 
 pub fn main(init: std.process.Init) !void {
-    // The default Threaded IO caps concurrent tasks at cpu_count-1.
-    // For a web server this means only (N-1) connections can be handled
-    // simultaneously — uploads stall once the limit is hit.
-    // We create our own Threaded instance with unlimited async concurrency.
-    var threaded = std.Io.Threaded.init(std.heap.page_allocator, .{
-        .async_limit = .unlimited,
-    });
-    defer threaded.deinit();
-    const io = threaded.io();
+    const io = init.io;
 
     if (vips.vips_init("tmunot") != 0) {
         std.debug.print("Failed to initialize libvips\n", .{});
@@ -94,12 +86,12 @@ pub fn main(init: std.process.Init) !void {
     defer auth_ctx.deinit();
 
     // 3. Start background job processor
-    try processor.startQueueWorker(allocator, init.io, &config);
+    try processor.startQueueWorker(allocator, io, &config);
 
-    try performOneTimeVideoMigration(allocator, init.io, &config);
+    try performOneTimeVideoMigration(allocator, io, &config);
 
     // 7. Start web server
-    try server.startServer(init.io, auth_ctx, config);
+    try server.startServer(io, auth_ctx, config);
 }
 
 fn performOneTimeVideoMigration(allocator: std.mem.Allocator, io: std.Io, config: *const config_mod.Config) !void {

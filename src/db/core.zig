@@ -113,10 +113,6 @@ pub fn getDb(username: []const u8) !*sqlite3 {
 
     const db = temp_db.?;
 
-    // Set a 5-second busy timeout so SQLite retries on SQLITE_BUSY instead of failing immediately.
-    // This prevents transient write-lock contention errors when the background worker is also writing.
-    _ = sqlite3_busy_timeout(db, 5000);
-
     var err_msg: [*c]u8 = null;
     const wal_rc = sqlite3_exec(db, "PRAGMA journal_mode=WAL;", null, null, &err_msg);
     if (wal_rc != SQLITE_OK) {
