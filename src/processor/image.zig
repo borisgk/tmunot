@@ -223,15 +223,10 @@ pub fn processImage(job: *queue.FileJob, orig_path_ptr: *[]u8, t_start: f64) !vo
         var next_img: ?*vips.VipsImage = null;
 
         if (idx == 0) {
-            const orig_path_c = std.fmt.allocPrintSentinel(job.allocator, "{s}", .{orig_path}, 0) catch |err| {
-                std.debug.print("Failed to format original image path sentinel: {}\n", .{err});
-                return error.FormattingFailed;
-            };
-            defer job.allocator.free(orig_path_c);
-
-            // First (largest) output: read directly from the original file saved on disk
-            const res = vips.vips_thumbnail(
-                orig_path_c.ptr,
+            // First (largest) output: resize from the buffer already in memory (avoids re-reading from disk)
+            const res = vips.vips_thumbnail_buffer(
+                file_buf.ptr,
+                file_buf.len,
                 &next_img,
                 @as(c_int, target.width),
                 "height",
@@ -241,7 +236,7 @@ pub fn processImage(job: *queue.FileJob, orig_path_ptr: *[]u8, t_start: f64) !vo
                 @as(?*anyopaque, null),
             );
             const t1 = vips.getWallMillis();
-            logger.logEvent(job.uuid, "vips_thumbnail completed from file", t_start, t1);
+            logger.logEvent(job.uuid, "vips_thumbnail_buffer completed from memory", t_start, t1);
 
             if (res != 0) {
                 std.debug.print("Failed to read and resize image from file: {s}\n", .{vips.vips_error_buffer()});
