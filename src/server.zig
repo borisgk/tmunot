@@ -285,8 +285,9 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
             try req.respond("Unauthorized", .{ .status = .unauthorized });
             return;
         }
-        const album_uuid = target[12 .. target.len - 7];
-        if (album_uuid.len == 36) {
+        const raw_album_uuid = target[12 .. target.len - 7];
+        if (raw_album_uuid.len == 36) {
+            const album_uuid = try req_alloc.dupe(u8, raw_album_uuid);
             try server_gallery.handleAddPhotosToAlbum(req, req_alloc, username.?, album_uuid);
             return;
         }
