@@ -73,6 +73,24 @@ pub fn decodeUrl(allocator: std.mem.Allocator, encoded: []const u8) ![]u8 {
     return allocator.realloc(out, j);
 }
 
+/// Escape HTML special characters to prevent XSS when interpolating user content into HTML.
+/// Encodes: & < > " ' → &amp; &lt; &gt; &quot; &#x27;
+pub fn htmlEscape(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    // Worst case: every char expands to 6 bytes ("&#x27;")
+    var out = std.ArrayList(u8).empty;
+    for (input) |c| {
+        switch (c) {
+            '&' => try out.appendSlice(allocator, "&amp;"),
+            '<' => try out.appendSlice(allocator, "&lt;"),
+            '>' => try out.appendSlice(allocator, "&gt;"),
+            '"' => try out.appendSlice(allocator, "&quot;"),
+            '\'' => try out.appendSlice(allocator, "&#x27;"),
+            else => try out.append(allocator, c),
+        }
+    }
+    return out.toOwnedSlice(allocator);
+}
+
 pub fn startServer(io: std.Io, auth_ctx: *auth.AuthContext, config: config_mod.Config) !void {
     const address = try std.Io.net.IpAddress.parseLiteral("0.0.0.0:3001");
     var listener = try std.Io.net.IpAddress.listen(&address, io, .{ .reuse_address = true });
@@ -166,7 +184,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
     std.debug.print("Request: {s} {s}\n", .{ @tagName(req.head.method), target });
 
     // Route static assets, previews, thumbnails, and fonts first
-    const handled_static = try server_gallery.serveStaticFile(req_alloc, req, io, is_authenticated, config);
+    const handled_static = try server_gallery.serveStaticFile(req_alloc, req, io, is_authenticated, username, config);
     if (handled_static) return;
 
     if (req.head.method == .GET and std.mem.eql(u8, target, "/")) {

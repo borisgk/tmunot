@@ -17,6 +17,7 @@ pub const LocationRecord = photos.LocationRecord;
 pub const insertPhoto = photos.insertPhoto;
 pub const updatePhotoDimensions = photos.updatePhotoDimensions;
 pub const getPhotoLocation = photos.getPhotoLocation;
+pub const getPhotoLocationForUser = photos.getPhotoLocationForUser;
 pub const getUserPhotos = photos.getUserPhotos;
 pub const insertPhotoExif = photos.insertPhotoExif;
 pub const getPhotoExif = photos.getPhotoExif;

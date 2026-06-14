@@ -5,7 +5,7 @@ const processor = @import("../../processor.zig");
 const config_mod = @import("../../config.zig");
 
 extern "c" fn time(t: ?*i64) i64;
-pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Request, io: std.Io, is_authenticated: bool, config: config_mod.Config) !bool {
+pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Request, io: std.Io, is_authenticated: bool, username: ?[]const u8, config: config_mod.Config) !bool {
     _ = allocator; // kept for API compatibility; we use a local arena below
     const target = req.head.target;
 
@@ -48,8 +48,13 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
             return true;
         }
 
-        // Retrieve properties from SQLite
-        const loc = try db.getPhotoLocation(uuid, alloc);
+        // Retrieve properties from SQLite — query only the authenticated user's database
+        // This enforces ownership (user can only view their own photos) and avoids scanning all DBs
+        if (username == null) {
+            try req.respond("Unauthorized", .{ .status = .unauthorized });
+            return true;
+        }
+        const loc = try db.getPhotoLocationForUser(username.?, uuid, alloc);
         if (loc == null) {
             try req.respond("Not Found", .{ .status = .not_found });
             return true;
@@ -244,12 +249,22 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
     }
 
     if (req.head.method == .GET and std.mem.startsWith(u8, target, "/avatars/")) {
+        if (!is_authenticated) {
+            try req.respond("Unauthorized", .{ .status = .unauthorized });
+            return true;
+        }
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
         const alloc = arena.allocator();
         
         const filename = try server.decodeUrl(alloc, target[9..]);
-        const file_path = try std.fmt.allocPrint(alloc, "data/avatars/{s}", .{ filename });
+        // Sanitize: strip path components to prevent directory traversal (e.g. ../../jwt_secret.bin)
+        const safe_filename = std.fs.path.basename(filename);
+        if (safe_filename.len == 0) {
+            try req.respond("Bad Request", .{ .status = .bad_request });
+            return true;
+        }
+        const file_path = try std.fmt.allocPrint(alloc, "data/avatars/{s}", .{ safe_filename });
         
         var file = std.Io.Dir.cwd().openFile(io, file_path, .{}) catch {
             try req.respond("Not Found", .{ .status = .not_found });
@@ -263,8 +278,8 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
         };
 
         var mime_type: []const u8 = "image/jpeg";
-        if (std.mem.endsWith(u8, filename, ".png")) mime_type = "image/png"
-        else if (std.mem.endsWith(u8, filename, ".webp")) mime_type = "image/webp";
+        if (std.mem.endsWith(u8, safe_filename, ".png")) mime_type = "image/png"
+        else if (std.mem.endsWith(u8, safe_filename, ".webp")) mime_type = "image/webp";
 
         var send_buffer: [8192]u8 = undefined;
         var response = req.respondStreaming(&send_buffer, .{

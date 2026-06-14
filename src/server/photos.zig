@@ -37,7 +37,7 @@ pub fn handleGetMetadata(req: *std.http.Server.Request, req_alloc: std.mem.Alloc
 pub fn handleRefreshMetadata(req: *std.http.Server.Request, io: std.Io, req_alloc: std.mem.Allocator, username: []const u8, target: []const u8, config: config_mod.Config) !void {
     const photo_uuid = target[12 .. target.len - 17];
     if (photo_uuid.len == 36) {
-        if (try db.getPhotoLocation(photo_uuid, req_alloc)) |loc| {
+        if (try db.getPhotoLocationForUser(username, photo_uuid, req_alloc)) |loc| {
             if (!std.mem.eql(u8, loc.username, username)) {
                 try req.respond("Forbidden", .{ .status = .forbidden });
                 return;
@@ -128,7 +128,7 @@ pub fn handleChangeDate(req: *std.http.Server.Request, req_alloc: std.mem.Alloca
         const new_shooting_date = try std.fmt.allocPrint(req_alloc, "{s} {s}", .{ new_date_str[0..10], new_date_str[11..19] });
         defer req_alloc.free(new_shooting_date);
 
-        if (try db.getPhotoLocation(photo_uuid, req_alloc)) |loc| {
+        if (try db.getPhotoLocationForUser(username, photo_uuid, req_alloc)) |loc| {
             if (!std.mem.eql(u8, loc.username, username)) {
                 try req.respond("Forbidden", .{ .status = .forbidden });
                 return;
@@ -187,7 +187,7 @@ pub fn handleChangeDate(req: *std.http.Server.Request, req_alloc: std.mem.Alloca
 pub fn handleDeletePhoto(req: *std.http.Server.Request, io: std.Io, req_alloc: std.mem.Allocator, username: []const u8, target: []const u8, config: config_mod.Config) !void {
     const photo_uuid = target[8..];
 
-    const loc = try db.getPhotoLocation(photo_uuid, req_alloc);
+    const loc = try db.getPhotoLocationForUser(username, photo_uuid, req_alloc);
     if (loc) |l| {
         if (std.mem.eql(u8, l.username, username)) {
             const orig_path = try std.fmt.allocPrint(req_alloc, "{s}/{s}/{s}/{s}/{s}.{s}", .{ config.originals_dir, l.username, l.year, l.month, photo_uuid, l.extension });

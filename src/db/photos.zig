@@ -326,6 +326,44 @@ pub fn getPhotoLocation(uuid: []const u8, allocator: std.mem.Allocator) !?Locati
     return null;
 }
 
+/// Like getPhotoLocation but queries only the specified user's database.
+/// This is O(1) instead of O(N users) and enforces ownership by design.
+pub fn getPhotoLocationForUser(username: []const u8, uuid: []const u8, allocator: std.mem.Allocator) !?LocationRecord {
+    const io = core.global_io orelse return error.DbNotInitialized;
+    core.db_mutex.lockUncancelable(io);
+    defer core.db_mutex.unlock(io);
+
+    const db = core.getDb(username) catch return null;
+
+    const sql = "SELECT username, year, month, extension FROM photos WHERE uuid = ?;";
+    var stmt: ?*core.sqlite3_stmt = null;
+    if (core.sqlite3_prepare_v2(db, sql, -1, &stmt, null) != core.SQLITE_OK) return null;
+    defer _ = core.sqlite3_finalize(stmt);
+
+    _ = core.sqlite3_bind_text(stmt, 1, uuid.ptr, @intCast(uuid.len), core.SQLITE_TRANSIENT);
+
+    const rc = core.sqlite3_step(stmt);
+    if (rc == core.SQLITE_ROW) {
+        const username_c = core.sqlite3_column_text(stmt, 0);
+        const year_c = core.sqlite3_column_text(stmt, 1);
+        const month_c = core.sqlite3_column_text(stmt, 2);
+        const extension_c = core.sqlite3_column_text(stmt, 3);
+
+        const username_len = core.sqlite3_column_bytes(stmt, 0);
+        const year_len = core.sqlite3_column_bytes(stmt, 1);
+        const month_len = core.sqlite3_column_bytes(stmt, 2);
+        const extension_len = core.sqlite3_column_bytes(stmt, 3);
+
+        return LocationRecord{
+            .username = try allocator.dupe(u8, username_c[0..@intCast(username_len)]),
+            .year = try allocator.dupe(u8, year_c[0..@intCast(year_len)]),
+            .month = try allocator.dupe(u8, month_c[0..@intCast(month_len)]),
+            .extension = try allocator.dupe(u8, extension_c[0..@intCast(extension_len)]),
+        };
+    }
+    return null;
+}
+
 pub fn getUserPhotos(username: []const u8, allocator: std.mem.Allocator) ![]PhotoRecord {
     const io = core.global_io orelse return error.DbNotInitialized;
     core.db_mutex.lockUncancelable(io);
