@@ -179,20 +179,9 @@ pub fn processImage(job: *queue.FileJob, orig_path_ptr: *[]u8, t_start: f64) !vo
     const t_db = vips.getWallMillis();
     logger.logEvent(job.uuid, "database updated (bg)", t_start, t_db);
 
-    const TargetSize = struct {
-        name: []const u8,
-        width: i32,
-        height: i32,
-    };
-
-    const targets = [_]TargetSize{
-        .{ .name = "previews", .width = 1200, .height = 1200 },
-        .{ .name = "thumbnails", .width = 600, .height = 600 },
-    };
-
     var current_img: ?*vips.VipsImage = null;
 
-    for (targets, 0..) |target, idx| {
+    for (queue.global_config.?.outputs, 0..) |target, idx| {
         const base_dir = if (std.mem.eql(u8, target.name, "previews")) queue.global_config.?.previews_dir else queue.global_config.?.thumbnails_dir;
         const target_dir = std.fmt.allocPrint(job.allocator, "{s}/{s}/{s}/{s}", .{ base_dir, job.username, job.year, job.month }) catch |err| {
             std.debug.print("Failed to format target directory: {}\n", .{err});
@@ -228,9 +217,9 @@ pub fn processImage(job: *queue.FileJob, orig_path_ptr: *[]u8, t_start: f64) !vo
                 file_buf.ptr,
                 file_buf.len,
                 &next_img,
-                @as(c_int, target.width),
+                @as(c_int, target.target_width),
                 "height",
-                @as(c_int, target.height),
+                @as(c_int, target.target_height),
                 "auto_rotate",
                 @as(c_int, 1),
                 @as(?*anyopaque, null),
@@ -254,9 +243,9 @@ pub fn processImage(job: *queue.FileJob, orig_path_ptr: *[]u8, t_start: f64) !vo
             const res = vips.vips_thumbnail_image(
                 current_img,
                 &next_img,
-                @as(c_int, target.width),
+                @as(c_int, target.target_width),
                 "height",
-                @as(c_int, target.height),
+                @as(c_int, target.target_height),
                 "auto_rotate",
                 @as(c_int, 1),
                 @as(?*anyopaque, null),
