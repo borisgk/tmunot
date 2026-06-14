@@ -27,14 +27,3 @@ databases/
 *.db-shm
 *.db-wal
 zig-pkg/
-
-# Temp and Scratch Binaries
-tmp/
-scratch_*
-
-# OS Files
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
