@@ -115,7 +115,14 @@ pub fn handleAddPhotosToAlbum(req: *std.http.Server.Request, allocator: std.mem.
         record.album_uuid = album_uuid;
         record.photo_uuid = photo_uuid;
         record.added_at = current_time.iso_str;
-        try db.insertAlbumPhoto(username, record);
+        db.insertAlbumPhoto(username, record) catch |err| {
+            std.debug.print("Failed to add photo {s} to album {s}: {}\n", .{ photo_uuid, album_uuid, err });
+            try req.respond("{\"error\":\"Failed to add photos to album\"}", .{
+                .status = .internal_server_error,
+                .extra_headers = &.{ .{ .name = "content-type", .value = "application/json" } },
+            });
+            return;
+        };
     }
 
     try req.respond("{\"status\":\"ok\"}", .{

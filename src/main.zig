@@ -82,6 +82,11 @@ pub fn main(init: std.process.Init) !void {
     try db.init(allocator, io, config.db_dir);
     defer db.deinit();
 
+    // Start the DB write queue drain fiber on the main async io context.
+    // Worker OS threads push write jobs here; the fiber drains them so all SQLite
+    // writes happen from within the correct io context and db_mutex works properly.
+    try db.write_queue.startDrainFiber(io);
+
     std.debug.print("Skipping photo conversion on startup for now.\n", .{});
 
     // Initialize AuthContext

@@ -338,8 +338,8 @@ pub fn processVideo(job: *queue.FileJob, orig_path_ptr: *[]u8) !void {
         .height = height,
     };
 
-    db.insertPhoto(record) catch |err| {
-        std.debug.print("Failed to insert video metadata: {}\n", .{err});
+    db.pushDbInsertPhoto(record) catch |err| {
+        std.debug.print("Failed to queue video photo insert: {}\n", .{err});
         return error.DbInsertFailed;
     };
 
@@ -357,7 +357,7 @@ pub fn processVideo(job: *queue.FileJob, orig_path_ptr: *[]u8) !void {
         }
         job.allocator.free(video_record.uuid);
     }
-    db.insertVideoMetadata(job.username, video_record) catch |err| {
-        std.debug.print("Failed to save video metadata: {}\n", .{err});
+    db.pushDbInsertVideoMetadata(job.username, video_record) catch |err| {
+        std.debug.print("Failed to queue video metadata insert: {}\n", .{err});
     };
 }
