@@ -88,8 +88,9 @@ pub fn handleRefreshMetadata(req: *std.http.Server.Request, io: std.Io, req_allo
 extern "c" fn rename(old: [*c]const u8, new: [*c]const u8) c_int;
 
 pub fn handleChangeDate(req: *std.http.Server.Request, req_alloc: std.mem.Allocator, username: []const u8, target: []const u8, config: config_mod.Config) !void {
-    const photo_uuid = target[12 .. target.len - 5];
-    if (photo_uuid.len == 36) {
+    const raw_photo_uuid = target[12 .. target.len - 5];
+    if (raw_photo_uuid.len == 36) {
+        const photo_uuid = try req_alloc.dupe(u8, raw_photo_uuid);
         var buf: [1024]u8 = undefined;
         var r = req.readerExpectNone(&buf);
         const body_str = r.allocRemaining(req_alloc, .limited(4 * 1024)) catch |err| {
