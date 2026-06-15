@@ -233,7 +233,7 @@ pub fn generateAlbumsHtml(allocator: std.mem.Allocator, username: []const u8) ![
     } else {
         for (albums, 0..) |a, idx| {
             var cover_html: []const u8 = undefined;
-            const loading_attr = if (idx < 12) "" else " loading=\"lazy\"";
+            const loading_attr = if (idx < 4) "" else " loading=\"lazy\"";
             const priority_attr = if (idx == 0) " fetchpriority=\"high\"" else "";
             
             const safe_name = try server.htmlEscape(alloc, a.name);
