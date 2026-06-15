@@ -107,13 +107,11 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
         \\              <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.05-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.22-.07.49.12.61l2.03 1.58c-.04.3-.06.61-.06.94s.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
         \\          </svg>
         \\      </a>
-        \\      <form method="POST" action="/logout" style="margin: 0;">
-        \\          <button type="submit" class="md-header-logout-icon-btn" title="Logout" aria-label="Logout">
-        \\              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-        \\                  <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
-        \\              </svg>
-        \\          </button>
-        \\      </form>
+        \\      <button type="button" class="md-header-logout-icon-btn" onclick="logout()" title="Logout" aria-label="Logout">
+        \\          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        \\              <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+        \\          </svg>
+        \\      </button>
         \\  </div>
     ;
 
@@ -232,13 +230,11 @@ pub fn generateAlbumsHtml(allocator: std.mem.Allocator, username: []const u8) ![
         \\  <div style="display: flex; align-items: center; gap: 8px;">
         \\{s}
         \\{s}
-        \\      <form method="POST" action="/logout" style="margin: 0;">
-        \\          <button type="submit" class="md-header-logout-icon-btn" title="Logout" aria-label="Logout">
-        \\              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-        \\                  <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
-        \\              </svg>
-        \\          </button>
-        \\      </form>
+        \\      <button type="button" class="md-header-logout-icon-btn" onclick="logout()" title="Logout" aria-label="Logout">
+        \\          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        \\              <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+        \\          </svg>
+        \\      </button>
         \\  </div>
         , .{ admin_btn, avatar_html }
     );
@@ -257,11 +253,14 @@ pub fn generateAlbumsHtml(allocator: std.mem.Allocator, username: []const u8) ![
         for (albums) |a| {
             var cover_html: []const u8 = undefined;
             
+            const safe_name = try server.htmlEscape(alloc, a.name);
+            defer alloc.free(safe_name);
+            
             if (a.cover_photo_uuid) |cover_uuid| {
                 const ext = a.cover_photo_extension orelse "jpg";
                 cover_html = try std.fmt.allocPrint(alloc,
                     \\<img src="/thumbnails/{s}.{s}" alt="{s}" style="width: 100%; height: 160px; object-fit: cover; border-radius: 12px 12px 0 0;">
-                    , .{ cover_uuid, ext, a.name }
+                    , .{ cover_uuid, ext, safe_name }
                 );
             } else {
                 cover_html = 
@@ -274,6 +273,8 @@ pub fn generateAlbumsHtml(allocator: std.mem.Allocator, username: []const u8) ![
             }
 
             const desc = a.description orelse "";
+            const safe_desc = try server.htmlEscape(alloc, desc);
+            defer alloc.free(safe_desc);
             const photo_count_text = if (a.photo_count == 1) "1 photo" else try std.fmt.allocPrint(alloc, "{d} photos", .{a.photo_count});
 
             const card_html = try std.fmt.allocPrint(alloc,
@@ -285,7 +286,7 @@ pub fn generateAlbumsHtml(allocator: std.mem.Allocator, username: []const u8) ![
                 \\        <p style="margin: 4px 0 0 0; font-size: 0.85rem; color: var(--md-sys-color-outline); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.4em; line-height: 1.2;" title="{s}">{s}</p>
                 \\    </div>
                 \\</div>
-                , .{ a.uuid, cover_html, a.name, a.name, photo_count_text, desc, desc }
+                , .{ a.uuid, cover_html, safe_name, safe_name, photo_count_text, safe_desc, safe_desc }
             );
             try html.appendSlice(alloc, card_html);
         }
@@ -355,13 +356,11 @@ pub fn generateAlbumDetailHtml(allocator: std.mem.Allocator, username: []const u
         \\  <div style="display: flex; align-items: center; gap: 8px;">
         \\{s}
         \\{s}
-        \\      <form method="POST" action="/logout" style="margin: 0;">
-        \\          <button type="submit" class="md-header-logout-icon-btn" title="Logout" aria-label="Logout">
-        \\              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-        \\                  <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
-        \\              </svg>
-        \\          </button>
-        \\      </form>
+        \\      <button type="button" class="md-header-logout-icon-btn" onclick="logout()" title="Logout" aria-label="Logout">
+        \\          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        \\              <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+        \\          </svg>
+        \\      </button>
         \\  </div>
         , .{ admin_btn, avatar_html }
     );
@@ -400,12 +399,17 @@ pub fn generateAlbumDetailHtml(allocator: std.mem.Allocator, username: []const u
     // Replace all placeholders
     var result_html: []const u8 = template;
     
+    const safe_album_name = try server.htmlEscape(alloc, album.name);
+    defer alloc.free(safe_album_name);
+    const safe_album_desc = try server.htmlEscape(alloc, album.description orelse "");
+    defer alloc.free(safe_album_desc);
+    
     // Replace <!-- ALBUM_NAME -->
-    result_html = try components.replacePlaceholder(alloc, result_html, "<!-- ALBUM_NAME -->", album.name);
+    result_html = try components.replacePlaceholder(alloc, result_html, "<!-- ALBUM_NAME -->", safe_album_name);
     // Replace <!-- ALBUM_NAME_HEADER -->
-    result_html = try components.replacePlaceholder(alloc, result_html, "<!-- ALBUM_NAME_HEADER -->", album.name);
+    result_html = try components.replacePlaceholder(alloc, result_html, "<!-- ALBUM_NAME_HEADER -->", safe_album_name);
     // Replace <!-- ALBUM_DESC_HEADER -->
-    result_html = try components.replacePlaceholder(alloc, result_html, "<!-- ALBUM_DESC_HEADER -->", album.description orelse "");
+    result_html = try components.replacePlaceholder(alloc, result_html, "<!-- ALBUM_DESC_HEADER -->", safe_album_desc);
     // Replace <!-- GALLERY_LOGOUT -->
     result_html = try components.replacePlaceholder(alloc, result_html, "<!-- GALLERY_LOGOUT -->", actions_combined);
     // Replace <!-- ALBUM_PHOTOS_CONTENT -->

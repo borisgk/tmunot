@@ -146,6 +146,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
     // username is duped into req_arena via getUsernameFromJwt; arena frees it.
 
     var cookie_csrf: []const u8 = "";
+    var header_csrf: []const u8 = "";
     var boundary_buf: [128]u8 = undefined;
     var multipart_boundary: []const u8 = "";
     var it = req.iterateHeaders();
@@ -164,6 +165,8 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
                     cookie_csrf = trimmed[11..];
                 }
             }
+        } else if (std.ascii.eqlIgnoreCase(header.name, "x-csrf-token")) {
+            header_csrf = header.value;
         } else if (std.ascii.eqlIgnoreCase(header.name, "content-type")) {
             if (std.mem.indexOf(u8, header.value, "boundary=")) |boundary_idx| {
                 var b_val = header.value[boundary_idx + 9..];
@@ -185,18 +188,47 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
     const handled_static = try server_gallery.serveStaticFile(req_alloc, req, io, is_authenticated, username, config);
     if (handled_static) return;
 
+    if (req.head.method == .POST or req.head.method == .PUT or req.head.method == .DELETE or req.head.method == .PATCH) {
+        if (!std.mem.eql(u8, target, "/login")) {
+            if (cookie_csrf.len == 0 or !std.mem.eql(u8, cookie_csrf, header_csrf)) {
+                try req.respond("CSRF Token Verification Failed", .{ .status = .forbidden });
+                return;
+            }
+        }
+    }
+
     if (req.head.method == .GET and std.mem.eql(u8, target, "/")) {
         if (is_authenticated) {
+            var new_cookie: ?[]const u8 = null;
+            if (cookie_csrf.len == 0) {
+                const csrf = try auth_ctx.generateCsrfToken(req_alloc);
+                cookie_csrf = csrf;
+                new_cookie = try std.fmt.allocPrint(req_alloc, "csrf_token={s}; SameSite=Lax; Path=/", .{csrf});
+            }
+
             const html = try server_gallery.generateGalleryHtml(req_alloc, username orelse "admin", config.gallery_thumbnail_height);
             defer std.heap.page_allocator.free(html);
-            try req.respond(html, .{
-                .extra_headers = &.{
-                    .{ .name = "content-type", .value = "text/html" },
-                    .{ .name = "cache-control", .value = "no-store, no-cache, must-revalidate, proxy-revalidate" },
-                    .{ .name = "pragma", .value = "no-cache" },
-                    .{ .name = "expires", .value = "0" },
-                },
-            });
+            
+            if (new_cookie) |cookie_header| {
+                try req.respond(html, .{
+                    .extra_headers = &.{
+                        .{ .name = "content-type", .value = "text/html" },
+                        .{ .name = "set-cookie", .value = cookie_header },
+                        .{ .name = "cache-control", .value = "no-store, no-cache, must-revalidate, proxy-revalidate" },
+                        .{ .name = "pragma", .value = "no-cache" },
+                        .{ .name = "expires", .value = "0" },
+                    },
+                });
+            } else {
+                try req.respond(html, .{
+                    .extra_headers = &.{
+                        .{ .name = "content-type", .value = "text/html" },
+                        .{ .name = "cache-control", .value = "no-store, no-cache, must-revalidate, proxy-revalidate" },
+                        .{ .name = "pragma", .value = "no-cache" },
+                        .{ .name = "expires", .value = "0" },
+                    },
+                });
+            }
             return;
         }
 
@@ -211,7 +243,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
         const final_html_clean = try req_alloc.alloc(u8, size2);
         _ = std.mem.replace(u8, final_html, "<!-- ERROR_MESSAGE -->", "", final_html_clean);
 
-        const cookie_header = try std.fmt.allocPrint(req_alloc, "csrf_token={s}; HttpOnly; SameSite=Lax; Path=/", .{csrf});
+        const cookie_header = try std.fmt.allocPrint(req_alloc, "csrf_token={s}; SameSite=Lax; Path=/", .{csrf});
 
         try req.respond(final_html_clean, .{
             .extra_headers = &.{

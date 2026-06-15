@@ -1,3 +1,24 @@
+function getCsrfToken() {
+    const match = document.cookie.match(new RegExp('(^| )csrf_token=([^;]+)'));
+    return match ? match[2] : null;
+}
+
+const originalFetch = window.fetch;
+window.fetch = function() {
+    let [resource, config] = arguments;
+    if(config && config.method && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(config.method.toUpperCase())) {
+        config.headers = config.headers || {};
+        config.headers['X-CSRF-Token'] = getCsrfToken();
+    }
+    return originalFetch(resource, config);
+}
+
+function logout() {
+    fetch('/logout', { method: 'POST' }).then(() => {
+        window.location.href = '/';
+    });
+}
+
 function showToast(message) {
     const toast = document.getElementById('toast');
     toast.textContent = message;

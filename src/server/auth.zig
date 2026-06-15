@@ -14,7 +14,7 @@ pub fn serveLoginError(req: *std.http.Server.Request, auth_ctx: *auth.AuthContex
     const final_html_err = try req_alloc.alloc(u8, size2);
     _ = std.mem.replace(u8, final_html, "<!-- ERROR_MESSAGE -->", err_msg, final_html_err);
 
-    const cookie_header = try std.fmt.allocPrint(req_alloc, "csrf_token={s}; HttpOnly; SameSite=Lax; Path=/", .{csrf});
+    const cookie_header = try std.fmt.allocPrint(req_alloc, "csrf_token={s}; SameSite=Lax; Path=/", .{csrf});
 
     try req.respond(final_html_err, .{
         .status = .unauthorized,

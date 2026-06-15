@@ -140,6 +140,20 @@ pub fn handleUpload(
     }
     const ext_clean = if (std.mem.startsWith(u8, ext_lower, ".")) ext_lower[1..] else ext_lower;
 
+    // Validate extension against allow-list
+    const allowed_exts = [_][]const u8{ "jpg", "jpeg", "png", "webp", "gif", "mp4", "mov", "m4v", "webm", "avi" };
+    var is_allowed = false;
+    for (allowed_exts) |allowed| {
+        if (std.mem.eql(u8, ext_clean, allowed)) {
+            is_allowed = true;
+            break;
+        }
+    }
+    if (!is_allowed) {
+        try req.respond("Invalid file extension", .{ .status = .bad_request });
+        return;
+    }
+
         // 3. Resolve calendar metrics (use current time for original photo directory path)
     const current_time = try getCurrentDateTime(req_alloc);
     defer req_alloc.free(current_time.year);

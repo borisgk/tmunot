@@ -199,6 +199,15 @@
 
             const xhr = new XMLHttpRequest();
             xhr.open('POST', '/upload', true);
+            
+            function getCsrfToken() {
+                const match = document.cookie.match(new RegExp('(^| )csrf_token=([^;]+)'));
+                return match ? match[2] : null;
+            }
+            const csrfToken = getCsrfToken();
+            if (csrfToken) {
+                xhr.setRequestHeader('X-CSRF-Token', csrfToken);
+            }
 
             xhr.upload.addEventListener('progress', (e) => {
                 if (e.lengthComputable && e.total > 0) {

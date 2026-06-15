@@ -1,6 +1,6 @@
 const std = @import("std");
 const db = @import("../../db.zig");
-
+const server = @import("../../server.zig");
 pub const shared_modals_html = 
     \\    <!-- Global Overflow Menu -->
     \\    <div id="global-menu" class="md-menu">
@@ -84,15 +84,67 @@ pub const shared_modals_html =
     \\                    <input type="password" id="profile-password" style="width: 100%; border: 1px solid var(--md-sys-color-outline); border-radius: 8px; padding: 12px; box-sizing: border-box; background: transparent; color: inherit;">
     \\                </div>
     \\                <div style="text-align: right;">
-    \\                    <button type="button" class="md-menu-item" style="display: inline-block; width: auto; margin-right: 8px; background: transparent; border: none; cursor: pointer; color: var(--md-sys-color-on-surface);" onclick="closeProfileModal({target:{id:'profile-modal'}})">Cancel</button>
-    \\                    <button type="submit" style="background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer;">Save</button>
-    \\                </div>
-    \\            </form>
+    \\    <div id="metadata-modal" class="lightbox">
+    \\        <div style="background: var(--md-sys-color-surface-container); border-radius: var(--md-sys-shape-corner-large); width: 90%; max-width: 450px; padding: 24px; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
+    \\            <div class="close-btn" style="position: absolute; top: 12px; right: 16px; color: var(--md-sys-color-on-surface-variant); font-size: 28px;" onclick="closeMetadataModal()">&times;</div>
+    \\            <h3 style="margin-top: 0; color: var(--md-sys-color-on-surface); font-size: 1.3rem;">Photo Info</h3>
+    \\            <div id="metadata-content" style="color: var(--md-sys-color-on-surface-variant); font-size: 0.95rem; line-height: 1.6; margin-top: 16px; display: grid; gap: 8px;">
+    \\                <!-- Metadata populated dynamically -->
+    \\            </div>
+    \\            <div style="margin-top: 24px; text-align: right;">
+    \\                 <button onclick="refreshMetadata()" class="primary-btn" style="font-size: 0.9rem; padding: 10px 16px;">Refresh Meta</button>
+    \\            </div>
     \\        </div>
     \\    </div>
-;
+    \\    <div id="date-change-modal" class="lightbox">
+    \\        <div style="background: var(--md-sys-color-surface-container); border-radius: var(--md-sys-shape-corner-large); width: 90%; max-width: 450px; padding: 24px; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
+    \\            <div class="close-btn" style="position: absolute; top: 12px; right: 16px; color: var(--md-sys-color-on-surface-variant); font-size: 28px;" onclick="closeDateChangeModal()">&times;</div>
+    \\            <h3 style="margin-top: 0; color: var(--md-sys-color-on-surface); font-size: 1.3rem;">Change Date & Time</h3>
+    \\            <p style="color: var(--md-sys-color-on-surface-variant); font-size: 0.9rem; margin-top: 8px; margin-bottom: 24px;">Adjust the shooting date manually.</p>
+    \\            <div class="md-text-field" style="margin-bottom: 24px;">
+    \\                <input type="datetime-local" id="new-date-input" required>
+    \\                <label for="new-date-input">Shooting Date</label>
+    \\            </div>
+    \\            <div style="text-align: right; display: flex; gap: 12px; justify-content: flex-end;">
+    \\                 <button onclick="closeDateChangeModal()" class="secondary-btn" style="padding: 10px 20px;">Cancel</button>
+    \\                 <button onclick="submitDateChange()" class="primary-btn" style="padding: 10px 20px;">Save</button>
+    \\            </div>
+    \\        </div>
+    \\    </div>
+    \\    <div id="add-to-album-modal" class="lightbox">
+    \\        <div style="background: var(--md-sys-color-surface-container); border-radius: var(--md-sys-shape-corner-large); width: 90%; max-width: 450px; padding: 24px; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
+    \\            <div class="close-btn" style="position: absolute; top: 12px; right: 16px; color: var(--md-sys-color-on-surface-variant); font-size: 28px;" onclick="closeAddToAlbumModal()">&times;</div>
+    \\            <h3 style="margin-top: 0; color: var(--md-sys-color-on-surface); font-size: 1.3rem;">Add to Album</h3>
+    \\            <div id="add-to-album-content" style="margin-top: 16px; max-height: 60vh; overflow-y: auto;">
+    \\                <div class="loader" style="position: relative; margin: 40px auto;"></div>
+    \\            </div>
+    \\        </div>
+    \\    </div>
+    \\    <div id="profile-modal" class="lightbox">
+    \\        <div style="background: var(--md-sys-color-surface-container); border-radius: var(--md-sys-shape-corner-large); width: 90%; max-width: 450px; padding: 24px; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
+    \\            <div class="close-btn" style="position: absolute; top: 12px; right: 16px; color: var(--md-sys-color-on-surface-variant); font-size: 28px;" onclick="closeProfileModal()">&times;</div>
+    \\            <h3 style="margin-top: 0; color: var(--md-sys-color-on-surface); font-size: 1.3rem;">Your Profile</h3>
+    \\            <div id="profile-content" style="margin-top: 24px; text-align: center;">
+    \\                <div class="loader" style="position: relative; margin: 40px auto;"></div>
+    \\            </div>
+    \\        </div>
+    \\    </div>
+    \\    <div id="toast" class="toast"></div>
+    ;
 
-pub fn getDisplayYearMonth(r: db.PhotoRecord) struct { year: []const u8, month: []const u8 } {
+pub fn replacePlaceholder(allocator: std.mem.Allocator, html: []const u8, placeholder: []const u8, replacement: []const u8) ![]u8 {
+    const size = std.mem.replacementSize(u8, html, placeholder, replacement);
+    const new_html = try allocator.alloc(u8, size);
+    _ = std.mem.replace(u8, html, placeholder, replacement, new_html);
+    return new_html;
+}
+
+pub const YearMonth = struct {
+    year: []const u8,
+    month: []const u8,
+};
+
+pub fn getDisplayYearMonth(r: db.PhotoRecord) YearMonth {
     if (r.shooting_date) |sd| {
         if (sd.len >= 10) {
             return .{
@@ -127,6 +179,10 @@ pub fn renderMediaCard(alloc: std.mem.Allocator, r: db.PhotoRecord, idx: usize) 
                      std.mem.eql(u8, r.extension, "avi");
 
     const shooting_date_str = r.shooting_date orelse "";
+    
+    const safe_filename = try server.htmlEscape(alloc, r.filename);
+    defer alloc.free(safe_filename);
+    
     if (is_video) {
         return try std.fmt.allocPrint(alloc,
             \\        <div class="card video-card" data-uuid="{s}" data-year="{s}" data-month="{s}" data-date="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h));" onclick="openLightbox('/previews/{s}.{s}')">
@@ -143,7 +199,7 @@ pub fn renderMediaCard(alloc: std.mem.Allocator, r: db.PhotoRecord, idx: usize) 
             \\            <p>{s}</p>
             \\        </div>
             \\
-        , .{ r.uuid, ym.year, ym.month, shooting_date_str, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename });
+        , .{ r.uuid, ym.year, ym.month, shooting_date_str, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, safe_filename, loading_attr, priority_attr, safe_filename });
     } else {
         return try std.fmt.allocPrint(alloc,
             \\        <div class="card" data-uuid="{s}" data-year="{s}" data-month="{s}" data-date="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h));" onclick="openLightbox('/previews/{s}.{s}')">
@@ -157,13 +213,7 @@ pub fn renderMediaCard(alloc: std.mem.Allocator, r: db.PhotoRecord, idx: usize) 
             \\            <p>{s}</p>
             \\        </div>
             \\
-        , .{ r.uuid, ym.year, ym.month, shooting_date_str, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, r.filename, loading_attr, priority_attr, r.filename });
+        , .{ r.uuid, ym.year, ym.month, shooting_date_str, ratio, ratio, r.uuid, r.extension, r.uuid, r.extension, r.uuid, r.extension, safe_filename, loading_attr, priority_attr, safe_filename });
     }
 }
 
-pub fn replacePlaceholder(alloc: std.mem.Allocator, input: []const u8, target: []const u8, replacement: []const u8) ![]const u8 {
-    const size = std.mem.replacementSize(u8, input, target, replacement);
-    const output = try alloc.alloc(u8, size);
-    _ = std.mem.replace(u8, input, target, replacement, output);
-    return output;
-}
