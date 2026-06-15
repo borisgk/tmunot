@@ -319,5 +319,62 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
         }
     }
 
+    if (req.head.method == .GET) {
+        if (std.mem.eql(u8, target, "/js/htmx.min.js")) {
+            try req.respond(@embedFile("../../js/htmx.min.js"), .{
+                .extra_headers = &.{ .{ .name = "Content-Type", .value = "application/javascript" }, .{ .name = "Cache-Control", .value = "public, max-age=31536000, immutable" } },
+            });
+            return true;
+        }
+        if (std.mem.eql(u8, target, "/js/alpine.min.js")) {
+            try req.respond(@embedFile("../../js/alpine.min.js"), .{
+                .extra_headers = &.{ .{ .name = "Content-Type", .value = "application/javascript" }, .{ .name = "Cache-Control", .value = "public, max-age=31536000, immutable" } },
+            });
+            return true;
+        }
+        if (std.mem.eql(u8, target, "/js/core.js")) {
+            try req.respond(@embedFile("../../core.js"), .{
+                .extra_headers = &.{ .{ .name = "Content-Type", .value = "application/javascript" }, .{ .name = "Cache-Control", .value = "no-cache" } },
+            });
+            return true;
+        }
+        if (std.mem.eql(u8, target, "/js/gallery.js")) {
+            try req.respond(@embedFile("../../gallery.js"), .{
+                .extra_headers = &.{ .{ .name = "Content-Type", .value = "application/javascript" }, .{ .name = "Cache-Control", .value = "no-cache" } },
+            });
+            return true;
+        }
+        if (std.mem.eql(u8, target, "/js/modals.js")) {
+            try req.respond(@embedFile("../../modals.js"), .{
+                .extra_headers = &.{ .{ .name = "Content-Type", .value = "application/javascript" }, .{ .name = "Cache-Control", .value = "no-cache" } },
+            });
+            return true;
+        }
+        if (std.mem.eql(u8, target, "/js/upload.js")) {
+            try req.respond(@embedFile("../../upload.js"), .{
+                .extra_headers = &.{ .{ .name = "Content-Type", .value = "application/javascript" }, .{ .name = "Cache-Control", .value = "no-cache" } },
+            });
+            return true;
+        }
+        if (std.mem.eql(u8, target, "/js/users.js")) {
+            try req.respond(@embedFile("../../users.js"), .{
+                .extra_headers = &.{ .{ .name = "Content-Type", .value = "application/javascript" }, .{ .name = "Cache-Control", .value = "no-cache" } },
+            });
+            return true;
+        }
+        if (std.mem.eql(u8, target, "/css/styles.css")) {
+            try req.respond(@embedFile("../../styles.css"), .{
+                .extra_headers = &.{ .{ .name = "Content-Type", .value = "text/css" }, .{ .name = "Cache-Control", .value = "no-cache" } },
+            });
+            return true;
+        }
+        if (std.mem.eql(u8, target, "/css/upload.css")) {
+            try req.respond(@embedFile("../../upload.css"), .{
+                .extra_headers = &.{ .{ .name = "Content-Type", .value = "text/css" }, .{ .name = "Cache-Control", .value = "no-cache" } },
+            });
+            return true;
+        }
+    }
+
     return false;
 }

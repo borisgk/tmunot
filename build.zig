@@ -19,9 +19,7 @@ pub fn build(b: *std.Build) void {
     exe.root_module.linkSystemLibrary("exif", .{});
     exe.root_module.linkSystemLibrary("sqlite3", .{});
 
-    // Run minification and embedding script before compiling the executable
-    const minify_cmd = b.addSystemCommand(&.{ "python3", "scripts/minify.py" });
-    exe.step.dependOn(&minify_cmd.step);
+
 
     b.installArtifact(exe);
 
@@ -42,7 +40,7 @@ pub fn build(b: *std.Build) void {
     exe_unit_tests.root_module.linkSystemLibrary("vips", .{});
     exe_unit_tests.root_module.linkSystemLibrary("exif", .{});
     exe_unit_tests.root_module.linkSystemLibrary("sqlite3", .{});
-    exe_unit_tests.step.dependOn(&minify_cmd.step);
+
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 

@@ -100,34 +100,18 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
     }
     try filter_html.appendSlice(alloc, "</select></div>\n");
 
-    const logout_html = 
-        \\  <div style="display: flex; align-items: center; gap: 8px;">
+    const hardcoded_admin = 
         \\      <a href="/users" class="md-header-logout-icon-btn" title="User Management" aria-label="User Management">
         \\          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-        \\              <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.05-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.22-.07.49.12.61l2.03 1.58c-.04.3-.06.61-.06.94s.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+        \\              <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.05-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.22-.07.49-.12.61l2.03 1.58c-.04.3-.06.61-.06.94s.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
         \\          </svg>
         \\      </a>
-        \\      <button type="button" class="md-header-logout-icon-btn" onclick="logout()" title="Logout" aria-label="Logout">
-        \\          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-        \\              <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
-        \\          </svg>
-        \\      </button>
-        \\  </div>
     ;
+    var logout_html: []const u8 = @embedFile("../../templates/components/logout.html");
+    logout_html = try components.replacePlaceholder(alloc, logout_html, "<!-- ADMIN_BTN -->", hardcoded_admin);
+    logout_html = try components.replacePlaceholder(alloc, logout_html, "<!-- AVATAR_HTML -->", "");
 
-    const selection_actions_html =
-        \\  <div id="selection-actions" class="selection-actions-container" style="display: none;">
-        \\      <button class="md-selection-icon-btn" onclick="bulkDownload()" title="Download selected" aria-label="Download selected">
-        \\          <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
-        \\      </button>
-        \\      <button class="md-selection-icon-btn" id="bulk-add-to-album-btn" onclick="openBulkAddToAlbum()" title="Add to album" aria-label="Add to album">
-        \\          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/></svg>
-        \\      </button>
-        \\      <button class="md-selection-icon-btn" onclick="bulkDelete()" title="Delete selected" aria-label="Delete selected" style="color: var(--md-sys-color-error, #ba1a1a);">
-        \\          <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-        \\      </button>
-        \\  </div>
-    ;
+    const selection_actions_html = @embedFile("../../templates/components/selection_actions.html");
 
     try html.appendSlice(alloc, filter_html.items);
     try html.appendSlice(alloc, logout_html);
@@ -206,38 +190,18 @@ pub fn generateAlbumsHtml(allocator: std.mem.Allocator, username: []const u8) ![
 
     var avatar_html: []const u8 = "";
     if (avatar_ext) |ext| {
-        avatar_html = try std.fmt.allocPrint(alloc,
-            "<img src=\"/avatars/{s}.{s}\" class=\"md-header-logout-icon-btn\" style=\"border-radius: 50%; object-fit: cover; cursor: pointer; padding: 0; width: 40px; height: 40px;\" onclick=\"openProfileModal()\" alt=\"Profile\">",
-            .{ username, ext }
-        );
+        var avatar_raw: []const u8 = @embedFile("../../templates/components/avatar_img.html");
+        avatar_raw = try components.replacePlaceholder(alloc, avatar_raw, "<!-- USERNAME -->", username);
+        avatar_html = try components.replacePlaceholder(alloc, avatar_raw, "<!-- EXT -->", ext);
     } else {
-        avatar_html = 
-            \\<button class="md-header-logout-icon-btn" style="border-radius: 50%; background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); font-weight: 500;" onclick="openProfileModal()" title="Profile">
-            \\    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-            \\</button>
-        ;
+        avatar_html = @embedFile("../../templates/components/avatar_default.html");
     }
 
-    const admin_btn = if (is_admin) 
-        \\      <a href="/users" class="md-header-logout-icon-btn" title="User Management" aria-label="User Management">
-        \\          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-        \\              <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.05-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.22-.07.49-.12.61l2.03 1.58c-.04.3-.06.61-.06.94s.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-        \\          </svg>
-        \\      </a>
-    else "";
+    const admin_btn = if (is_admin) @embedFile("../../templates/components/admin_btn.html") else "";
 
-    const logout_html = try std.fmt.allocPrint(alloc,
-        \\  <div style="display: flex; align-items: center; gap: 8px;">
-        \\{s}
-        \\{s}
-        \\      <button type="button" class="md-header-logout-icon-btn" onclick="logout()" title="Logout" aria-label="Logout">
-        \\          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-        \\              <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
-        \\          </svg>
-        \\      </button>
-        \\  </div>
-        , .{ admin_btn, avatar_html }
-    );
+    var logout_html: []const u8 = @embedFile("../../templates/components/logout.html");
+    logout_html = try components.replacePlaceholder(alloc, logout_html, "<!-- ADMIN_BTN -->", admin_btn);
+    logout_html = try components.replacePlaceholder(alloc, logout_html, "<!-- AVATAR_HTML -->", avatar_html);
 
     try html.appendSlice(alloc, logout_html);
     try html.appendSlice(alloc, part2);
@@ -246,9 +210,7 @@ pub fn generateAlbumsHtml(allocator: std.mem.Allocator, username: []const u8) ![
     const albums = try db.getAlbums(username, alloc);
 
     if (albums.len == 0) {
-        try html.appendSlice(alloc, 
-            \\<p style="text-align: center; width: 100%; color: var(--md-sys-color-on-surface-variant); padding: 48px 0;">No albums yet.</p>
-        );
+        try html.appendSlice(alloc, @embedFile("../../templates/components/album_empty.html"));
     } else {
         for (albums) |a| {
             var cover_html: []const u8 = undefined;
@@ -258,18 +220,12 @@ pub fn generateAlbumsHtml(allocator: std.mem.Allocator, username: []const u8) ![
             
             if (a.cover_photo_uuid) |cover_uuid| {
                 const ext = a.cover_photo_extension orelse "jpg";
-                cover_html = try std.fmt.allocPrint(alloc,
-                    \\<img src="/thumbnails/{s}.{s}" alt="{s}" style="width: 100%; height: 160px; object-fit: cover; border-radius: 12px 12px 0 0;">
-                    , .{ cover_uuid, ext, safe_name }
-                );
+                var cover_raw: []const u8 = @embedFile("../../templates/components/album_cover_img.html");
+                cover_raw = try components.replacePlaceholder(alloc, cover_raw, "<!-- COVER_UUID -->", cover_uuid);
+                cover_raw = try components.replacePlaceholder(alloc, cover_raw, "<!-- EXT -->", ext);
+                cover_html = try components.replacePlaceholder(alloc, cover_raw, "<!-- SAFE_NAME -->", safe_name);
             } else {
-                cover_html = 
-                    \\<div style="width: 100%; height: 160px; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; border-radius: 12px 12px 0 0; color: var(--md-sys-color-primary);">
-                    \\    <svg viewBox="0 0 24 24" fill="currentColor" width="48" height="48">
-                    \\        <path d="M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11-4 2.03 2.71L16 11l4 5H8l3-4zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z"/>
-                    \\    </svg>
-                    \\</div>
-                ;
+                cover_html = @embedFile("../../templates/components/album_cover_default.html");
             }
 
             const desc = a.description orelse "";
@@ -277,17 +233,13 @@ pub fn generateAlbumsHtml(allocator: std.mem.Allocator, username: []const u8) ![
             defer alloc.free(safe_desc);
             const photo_count_text = if (a.photo_count == 1) "1 photo" else try std.fmt.allocPrint(alloc, "{d} photos", .{a.photo_count});
 
-            const card_html = try std.fmt.allocPrint(alloc,
-                \\<div class="album-card" onclick="window.location.href='/albums/{s}'" style="width: 220px; background: var(--md-sys-color-surface-container); border-radius: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; overflow: hidden; display: flex; flex-direction: column;">
-                \\    {s}
-                \\    <div style="padding: 16px; display: flex; flex-direction: column; gap: 4px;">
-                \\        <h3 style="margin: 0; font-size: 1.1rem; font-weight: 600; color: var(--md-sys-color-on-surface); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{s}">{s}</h3>
-                \\        <span style="font-size: 0.85rem; color: var(--md-sys-color-on-surface-variant); font-weight: 500;">{s}</span>
-                \\        <p style="margin: 4px 0 0 0; font-size: 0.85rem; color: var(--md-sys-color-outline); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.4em; line-height: 1.2;" title="{s}">{s}</p>
-                \\    </div>
-                \\</div>
-                , .{ a.uuid, cover_html, safe_name, safe_name, photo_count_text, safe_desc, safe_desc }
-            );
+            var card_html: []const u8 = @embedFile("../../templates/components/album_card.html");
+            card_html = try components.replacePlaceholder(alloc, card_html, "<!-- UUID -->", a.uuid);
+            card_html = try components.replacePlaceholder(alloc, card_html, "<!-- COVER_HTML -->", cover_html);
+            card_html = try components.replacePlaceholder(alloc, card_html, "<!-- SAFE_NAME -->", safe_name);
+            card_html = try components.replacePlaceholder(alloc, card_html, "<!-- PHOTO_COUNT_TEXT -->", photo_count_text);
+            card_html = try components.replacePlaceholder(alloc, card_html, "<!-- SAFE_DESC -->", safe_desc);
+            
             try html.appendSlice(alloc, card_html);
         }
     }
@@ -332,52 +284,20 @@ pub fn generateAlbumDetailHtml(allocator: std.mem.Allocator, username: []const u
 
     var avatar_html: []const u8 = "";
     if (avatar_ext) |ext| {
-        avatar_html = try std.fmt.allocPrint(alloc,
-            "<img src=\"/avatars/{s}.{s}\" class=\"md-header-logout-icon-btn\" style=\"border-radius: 50%; object-fit: cover; cursor: pointer; padding: 0; width: 40px; height: 40px;\" onclick=\"openProfileModal()\" alt=\"Profile\">",
-            .{ username, ext }
-        );
+        var avatar_raw: []const u8 = @embedFile("../../templates/components/avatar_img.html");
+        avatar_raw = try components.replacePlaceholder(alloc, avatar_raw, "<!-- USERNAME -->", username);
+        avatar_html = try components.replacePlaceholder(alloc, avatar_raw, "<!-- EXT -->", ext);
     } else {
-        avatar_html = 
-            \\<button class="md-header-logout-icon-btn" style="border-radius: 50%; background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); font-weight: 500;" onclick="openProfileModal()" title="Profile">
-            \\    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-            \\</button>
-        ;
+        avatar_html = @embedFile("../../templates/components/avatar_default.html");
     }
 
-    const admin_btn = if (is_admin) 
-        \\      <a href="/users" class="md-header-logout-icon-btn" title="User Management" aria-label="User Management">
-        \\          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-        \\              <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.05-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.22-.07.49-.12.61l2.03 1.58c-.04.3-.06.61-.06.94s.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-        \\          </svg>
-        \\      </a>
-    else "";
+    const admin_btn = if (is_admin) @embedFile("../../templates/components/admin_btn.html") else "";
 
-    const logout_html = try std.fmt.allocPrint(alloc,
-        \\  <div style="display: flex; align-items: center; gap: 8px;">
-        \\{s}
-        \\{s}
-        \\      <button type="button" class="md-header-logout-icon-btn" onclick="logout()" title="Logout" aria-label="Logout">
-        \\          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-        \\              <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
-        \\          </svg>
-        \\      </button>
-        \\  </div>
-        , .{ admin_btn, avatar_html }
-    );
+    var logout_html: []const u8 = @embedFile("../../templates/components/logout.html");
+    logout_html = try components.replacePlaceholder(alloc, logout_html, "<!-- ADMIN_BTN -->", admin_btn);
+    logout_html = try components.replacePlaceholder(alloc, logout_html, "<!-- AVATAR_HTML -->", avatar_html);
 
-    const selection_actions_html =
-        \\  <div id="selection-actions" class="selection-actions-container" style="display: none;">
-        \\      <button class="md-selection-icon-btn" onclick="bulkDownload()" title="Download selected" aria-label="Download selected">
-        \\          <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
-        \\      </button>
-        \\      <button class="md-selection-icon-btn" id="bulk-add-to-album-btn" onclick="openBulkAddToAlbum()" title="Add to album" aria-label="Add to album">
-        \\          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/></svg>
-        \\      </button>
-        \\      <button class="md-selection-icon-btn" onclick="bulkDelete()" title="Delete selected" aria-label="Delete selected" style="color: var(--md-sys-color-error, #ba1a1a);">
-        \\          <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-        \\      </button>
-        \\  </div>
-    ;
+    const selection_actions_html = @embedFile("../../templates/components/selection_actions.html");
 
     const actions_combined = try std.fmt.allocPrint(alloc, "{s}{s}", .{ logout_html, selection_actions_html });
 
@@ -389,9 +309,7 @@ pub fn generateAlbumDetailHtml(allocator: std.mem.Allocator, username: []const u
     }
 
     if (photos.len == 0) {
-        try photos_html.appendSlice(alloc, 
-            \\<p style="text-align: center; width: 100%; color: var(--md-sys-color-on-surface-variant); padding: 48px 0;">No photos in this album yet.</p>
-        );
+        try photos_html.appendSlice(alloc, @embedFile("../../templates/components/album_photos_empty.html"));
     } else {
         try photos_html.appendSlice(alloc, "        <div class=\"gallery-spacer\"></div>\n");
     }
