@@ -234,7 +234,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
 
         const csrf = try auth_ctx.generateCsrfToken(req_alloc);
 
-        const login_html = @embedFile("login_gen.html");
+        const login_html = @embedFile("login.html");
         const size = std.mem.replacementSize(u8, login_html, "<!-- CSRF_TOKEN -->", csrf);
         const final_html = try req_alloc.alloc(u8, size);
         _ = std.mem.replace(u8, login_html, "<!-- CSRF_TOKEN -->", csrf, final_html);
@@ -398,7 +398,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
             return;
         }
 
-        try req.respond(@embedFile("upload_gen.html"), .{
+        try req.respond(@embedFile("upload.html"), .{
             .extra_headers = &.{
                 .{ .name = "content-type", .value = "text/html" },
                 .{ .name = "cache-control", .value = "no-cache, no-store, must-revalidate" },
@@ -456,7 +456,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
             return;
         }
 
-        try req.respond(@embedFile("users_gen.html"), .{
+        try req.respond(@embedFile("users.html"), .{
             .extra_headers = &.{
                 .{ .name = "content-type", .value = "text/html" },
                 .{ .name = "cache-control", .value = "no-cache, no-store, must-revalidate" },

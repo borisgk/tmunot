@@ -5,7 +5,7 @@ const server = @import("../server.zig");
 pub fn serveLoginError(req: *std.http.Server.Request, auth_ctx: *auth.AuthContext, req_alloc: std.mem.Allocator, err_msg: []const u8) !void {
     const csrf = try auth_ctx.generateCsrfToken(req_alloc);
 
-    const login_html = @embedFile("../login_gen.html");
+    const login_html = @embedFile("../login.html");
     const size = std.mem.replacementSize(u8, login_html, "<!-- CSRF_TOKEN -->", csrf);
     const final_html = try req_alloc.alloc(u8, size);
     _ = std.mem.replace(u8, login_html, "<!-- CSRF_TOKEN -->", csrf, final_html);

@@ -17,7 +17,7 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
     var html = std.ArrayList(u8).empty;
     // html is backed by the arena; no errdefer needed — arena.deinit() cleans it up.
 
-    const template = @embedFile("../../index_gen.html");
+    const template = @embedFile("../../index.html");
     const lcp_placeholder = "<!-- LCP_PRELOAD -->";
     const logout_placeholder = "<!-- GALLERY_LOGOUT -->";
     const content_placeholder = "<!-- GALLERY_CONTENT -->";
@@ -165,10 +165,15 @@ pub fn generateAlbumsHtml(allocator: std.mem.Allocator, username: []const u8) ![
 
     var html = std.ArrayList(u8).empty;
 
-    const template = @embedFile("../../albums_gen.html");
+    const template = @embedFile("../../albums.html");
+    const lcp_placeholder = "<!-- LCP_PRELOAD -->";
     const logout_placeholder = "<!-- GALLERY_LOGOUT -->";
     const content_placeholder = "<!-- ALBUMS_CONTENT -->";
 
+    const lcp_idx = std.mem.indexOf(u8, template, lcp_placeholder) orelse {
+        std.debug.print("Could not find LCP_PRELOAD in template\n", .{});
+        return error.InvalidTemplate;
+    };
     const logout_idx = std.mem.indexOf(u8, template, logout_placeholder) orelse {
         std.debug.print("Could not find GALLERY_LOGOUT in template\n", .{});
         return error.InvalidTemplate;
@@ -178,11 +183,27 @@ pub fn generateAlbumsHtml(allocator: std.mem.Allocator, username: []const u8) ![
         return error.InvalidTemplate;
     };
 
-    const part1 = template[0..logout_idx];
-    const part2 = template[logout_idx + logout_placeholder.len .. content_idx];
-    const part3 = template[content_idx + content_placeholder.len ..];
+    const part1 = template[0..lcp_idx];
+    const part2 = template[lcp_idx + lcp_placeholder.len .. logout_idx];
+    const part3 = template[logout_idx + logout_placeholder.len .. content_idx];
+    const part4 = template[content_idx + content_placeholder.len ..];
+
+    // Retrieve user albums
+    const albums = try db.getAlbums(username, alloc);
 
     try html.appendSlice(alloc, part1);
+
+    if (albums.len > 0) {
+        const first_album = albums[0];
+        if (first_album.cover_photo_uuid) |cover_uuid| {
+            const ext = first_album.cover_photo_extension orelse "jpg";
+            const preload_tag = try std.fmt.allocPrint(alloc,
+                "<link rel=\"preload\" as=\"image\" href=\"/thumbnails/{s}.{s}\" fetchpriority=\"high\">",
+                .{ cover_uuid, ext }
+            );
+            try html.appendSlice(alloc, preload_tag);
+        }
+    }
 
     const user_opt = try db.getUser(username, alloc);
     const is_admin = if (user_opt) |u| u.is_admin else false;
@@ -205,15 +226,15 @@ pub fn generateAlbumsHtml(allocator: std.mem.Allocator, username: []const u8) ![
 
     try html.appendSlice(alloc, logout_html);
     try html.appendSlice(alloc, part2);
-
-    // Retrieve user albums
-    const albums = try db.getAlbums(username, alloc);
+    try html.appendSlice(alloc, part3);
 
     if (albums.len == 0) {
         try html.appendSlice(alloc, @embedFile("../../templates/components/album_empty.html"));
     } else {
-        for (albums) |a| {
+        for (albums, 0..) |a, idx| {
             var cover_html: []const u8 = undefined;
+            const loading_attr = if (idx < 12) "" else " loading=\"lazy\"";
+            const priority_attr = if (idx == 0) " fetchpriority=\"high\"" else "";
             
             const safe_name = try server.htmlEscape(alloc, a.name);
             defer alloc.free(safe_name);
@@ -223,6 +244,8 @@ pub fn generateAlbumsHtml(allocator: std.mem.Allocator, username: []const u8) ![
                 var cover_raw: []const u8 = @embedFile("../../templates/components/album_cover_img.html");
                 cover_raw = try components.replacePlaceholder(alloc, cover_raw, "<!-- COVER_UUID -->", cover_uuid);
                 cover_raw = try components.replacePlaceholder(alloc, cover_raw, "<!-- EXT -->", ext);
+                cover_raw = try components.replacePlaceholder(alloc, cover_raw, "<!-- LOADING_ATTR -->", loading_attr);
+                cover_raw = try components.replacePlaceholder(alloc, cover_raw, "<!-- PRIORITY_ATTR -->", priority_attr);
                 cover_html = try components.replacePlaceholder(alloc, cover_raw, "<!-- SAFE_NAME -->", safe_name);
             } else {
                 cover_html = @embedFile("../../templates/components/album_cover_default.html");
@@ -244,7 +267,7 @@ pub fn generateAlbumsHtml(allocator: std.mem.Allocator, username: []const u8) ![
         }
     }
 
-    try html.appendSlice(alloc, part3);
+    try html.appendSlice(alloc, part4);
 
     const result = try std.heap.page_allocator.dupe(u8, html.items);
     return result;
@@ -258,7 +281,7 @@ pub fn generateAlbumDetailHtml(allocator: std.mem.Allocator, username: []const u
     const album_record = try db.getAlbum(username, album_uuid, alloc);
     const album = album_record orelse return null;
 
-    const template = @embedFile("../../album_detail_gen.html");
+    const template = @embedFile("../../album_detail.html");
 
     // 1. Dynamic style tag
     const dynamic_style = try std.fmt.allocPrint(alloc,
