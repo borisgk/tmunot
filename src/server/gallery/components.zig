@@ -40,8 +40,8 @@ pub fn renderMediaCard(alloc: std.mem.Allocator, r: db.PhotoRecord, idx: usize) 
     const raw_ratio = fw / fh;
     const ratio = if (raw_ratio > 0.1 and raw_ratio < 10.0) raw_ratio else 1.5;
 
-    const loading_attr = if (idx < 4) "" else " loading=\"lazy\"";
-    const priority_attr = if (idx == 0) " fetchpriority=\"high\"" else "";
+    const loading_attr = if (idx < 12) "" else " loading=\"lazy\"";
+    const priority_attr = if (idx < 4) " fetchpriority=\"high\"" else "";
 
     const ym = getDisplayYearMonth(r);
     const is_video = std.mem.eql(u8, r.extension, "mp4") or
