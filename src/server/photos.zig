@@ -209,8 +209,67 @@ pub fn handleDeletePhoto(req: *std.http.Server.Request, io: std.Io, req_alloc: s
             try req.respond("Forbidden", .{ .status = .forbidden });
             return;
         }
-    } else {
         try req.respond("Not Found", .{ .status = .not_found });
         return;
     }
 }
+
+pub fn handleDeleteBatch(req: *std.http.Server.Request, io: std.Io, req_alloc: std.mem.Allocator, username: []const u8, config: config_mod.Config) !void {
+    var buf: [4096]u8 = undefined;
+    var r = req.readerExpectNone(&buf);
+    const body_str = r.allocRemaining(req_alloc, .limited(4 * 1024)) catch |err| {
+        std.debug.print("Failed to read body: {}\n", .{err});
+        try req.respond("Bad Request", .{ .status = .bad_request });
+        return;
+    };
+    defer req_alloc.free(body_str);
+
+    // Parse URL encoded body. We expect "uuids=uuid1,uuid2,uuid3"
+    var uuids_str: ?[]const u8 = null;
+    var form_it = std.mem.tokenizeSequence(u8, body_str, "&");
+    while (form_it.next()) |pair| {
+        var kv_it = std.mem.splitScalar(u8, pair, '=');
+        const k = kv_it.first();
+        if (std.mem.eql(u8, k, "uuids")) {
+            if (kv_it.next()) |v| {
+                uuids_str = try server.decodeUrl(req_alloc, v);
+            }
+        }
+    }
+
+    if (uuids_str) |s| {
+        defer req_alloc.free(s);
+        var uuid_it = std.mem.splitScalar(u8, s, ',');
+        while (uuid_it.next()) |uuid| {
+            const trimmed = std.mem.trim(u8, uuid, " ");
+            if (trimmed.len != 36) continue;
+            
+            const loc = try db.getPhotoLocationForUser(username, trimmed, req_alloc);
+            if (loc) |l| {
+                if (std.mem.eql(u8, l.username, username)) {
+                    const orig_path = try std.fmt.allocPrint(req_alloc, "{s}/{s}/{s}/{s}/{s}.{s}", .{ config.originals_dir, l.username, l.year, l.month, trimmed, l.extension });
+                    const prev_path = try std.fmt.allocPrint(req_alloc, "{s}/{s}/{s}/{s}/{s}.{s}", .{ config.previews_dir, l.username, l.year, l.month, trimmed, l.extension });
+                    const thumb_path = try std.fmt.allocPrint(req_alloc, "{s}/{s}/{s}/{s}/{s}.{s}", .{ config.thumbnails_dir, l.username, l.year, l.month, trimmed, l.extension });
+                    const hover_path = try std.fmt.allocPrint(req_alloc, "{s}/{s}/{s}/{s}/{s}.mp4", .{ config.hover_previews_dir, l.username, l.year, l.month, trimmed });
+
+                    const cwd = std.Io.Dir.cwd();
+                    cwd.deleteFile(io, orig_path) catch {};
+                    cwd.deleteFile(io, prev_path) catch {};
+                    cwd.deleteFile(io, thumb_path) catch {};
+                    cwd.deleteFile(io, hover_path) catch {};
+
+                    try db.deletePhoto(username, trimmed);
+                }
+            }
+        }
+    }
+
+    // HTMX responds with HX-Redirect to refresh page
+    try req.respond("", .{
+        .status = .ok,
+        .extra_headers = &.{
+            .{ .name = "HX-Redirect", .value = "/" },
+        },
+    });
+}
+

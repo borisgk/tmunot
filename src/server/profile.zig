@@ -2,7 +2,32 @@ const std = @import("std");
 const auth = @import("../auth.zig");
 const db = @import("../db.zig");
 
+const profile_modal_template = @embedFile("../templates/components/profile_modal.html");
+
 pub fn handleProfileApi(req: *std.http.Server.Request, io: std.Io, req_alloc: std.mem.Allocator, auth_ctx: *auth.AuthContext, username: []const u8, target: []const u8) !void {
+    if (req.head.method == .GET and std.mem.eql(u8, target, "/api/profile-modal")) {
+        const u_opt = try db.getUser(username, req_alloc);
+        const u = u_opt orelse {
+            try req.respond("User not found", .{ .status = .not_found });
+            return;
+        };
+        defer {
+            req_alloc.free(u.username);
+            req_alloc.free(u.password_hash);
+            req_alloc.free(u.real_name);
+            if (u.avatar_ext) |ext| req_alloc.free(ext);
+        }
+
+        const components = @import("gallery/components.zig");
+        const html1 = try components.replacePlaceholder(req_alloc, profile_modal_template, "<!-- USERNAME -->", u.username);
+        defer req_alloc.free(html1);
+        const html2 = try components.replacePlaceholder(req_alloc, html1, "<!-- REAL_NAME -->", u.real_name);
+        defer req_alloc.free(html2);
+
+        try req.respond(html2, .{ .extra_headers = &.{.{ .name = "content-type", .value = "text/html" }} });
+        return;
+    }
+
     if (req.head.method == .GET and std.mem.eql(u8, target, "/api/users/me")) {
         const u_opt = try db.getUser(username, req_alloc);
         const u = u_opt orelse {

@@ -478,7 +478,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
         return;
     }
 
-    if (std.mem.startsWith(u8, target, "/api/users/me")) {
+    if (std.mem.startsWith(u8, target, "/api/profile-modal") or std.mem.startsWith(u8, target, "/api/users/me")) {
         if (!is_authenticated or username == null) {
             try req.respond("Unauthorized", .{ .status = .unauthorized });
             return;
@@ -495,9 +495,9 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
     if (req.head.method == .POST and std.mem.eql(u8, target, "/logout")) {
         const cookie = "token=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0";
         try req.respond("", .{
-            .status = .see_other,
+            .status = .ok,
             .extra_headers = &.{
-                .{ .name = "location", .value = "/" },
+                .{ .name = "HX-Redirect", .value = "/" },
                 .{ .name = "set-cookie", .value = cookie },
             },
         });
@@ -510,6 +510,15 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
             return;
         }
         try server_photos.handleDeletePhoto(req, io, req_alloc, username.?, target, config);
+        return;
+    }
+
+    if (req.head.method == .POST and std.mem.eql(u8, target, "/delete-batch")) {
+        if (!is_authenticated or username == null) {
+            try req.respond("Unauthorized", .{ .status = .unauthorized });
+            return;
+        }
+        try server_photos.handleDeleteBatch(req, io, req_alloc, username.?, config);
         return;
     }
 

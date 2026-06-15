@@ -1,3 +1,7 @@
+[x-cloak] {
+    display: none !important;
+}
+
 @font-face {
     font-family: 'Roboto';
     font-style: normal;
@@ -595,6 +599,7 @@ body {
 }
 
 .md-menu.active {
+    display: block;
     opacity: 1;
     transform: scale(1);
     pointer-events: auto;

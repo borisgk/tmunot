@@ -33,6 +33,7 @@ pub extern "c" fn exif_data_new_from_data(data: [*c]const u8, size: c_uint) ?*Ex
 pub extern "c" fn exif_data_new_from_file(path: [*c]const u8) ?*ExifData;
 pub extern "c" fn exif_data_unref(data: ?*ExifData) void;
 pub extern "c" fn exif_tag_get_name(tag: ExifTag) [*c]const u8;
+pub extern "c" fn exif_tag_get_name_in_ifd(tag: ExifTag, ifd: ExifIfd) [*c]const u8;
 pub extern "c" fn exif_tag_get_title(tag: ExifTag) [*c]const u8;
 pub extern "c" fn exif_tag_get_description(tag: ExifTag) [*c]const u8;
 pub extern "c" fn exif_entry_get_value(entry: ?*ExifEntry, val: [*c]u8, maxlen: c_uint) [*c]u8;
@@ -96,7 +97,7 @@ pub fn extractExifFromBuffer(allocator: std.mem.Allocator, buffer: []const u8) !
                 var i: usize = 0;
                 while (i < c.count) : (i += 1) {
                     if (c.entries.?[i]) |entry| {
-                        const tag_name_c = exif_tag_get_name(entry.tag);
+                        const tag_name_c = exif_tag_get_name_in_ifd(entry.tag, @intCast(ifd));
                         if (tag_name_c == null) continue;
                         const tag_name = std.mem.span(tag_name_c);
 
@@ -163,7 +164,7 @@ pub fn extractFullExifFromBuffer(allocator: std.mem.Allocator, buffer: []const u
                 var i: usize = 0;
                 while (i < c.count) : (i += 1) {
                     if (c.entries.?[i]) |entry| {
-                        const tag_name_c = exif_tag_get_name(entry.tag);
+                        const tag_name_c = exif_tag_get_name_in_ifd(entry.tag, @intCast(ifd));
                         if (tag_name_c == null) continue;
                         const tag_name = std.mem.span(tag_name_c);
 

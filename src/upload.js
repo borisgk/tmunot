@@ -1,5 +1,7 @@
-        const dropzone = document.getElementById('dropzone');
-        const fileInput = document.getElementById('file-input');
+(function() {
+    const dropzone = document.getElementById('dropzone');
+    if (!dropzone) return;
+    const fileInput = document.getElementById('file-input');
         const stagedList = document.getElementById('staged-list');
         const stagedTitle = document.getElementById('staged-title');
         const uploadBtn = document.getElementById('upload-btn');
@@ -311,3 +313,4 @@
                 }
             });
         }
+})();

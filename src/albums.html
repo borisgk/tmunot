@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/css/styles.css">
     <!-- LCP_PRELOAD -->
 </head>
-<body class="gallery-body">
+<body class="gallery-body" x-data="galleryState()" :class="{ 'selection-mode': selectedPhotos.length > 0 }">
     <header class="md-top-app-bar" id="app-bar">
         <div class="md-top-app-bar__left" id="app-bar-left">
             <a href="/" class="md-header-logout-icon-btn" title="Gallery" style="text-decoration: none;">
@@ -26,59 +26,38 @@
         </div>
     </main>
 
-    <button class="md-fab" onclick="openCreateAlbumModal()" title="Create Album">
+    <button class="md-fab" @click="modals.createAlbum = true" title="Create Album">
         <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
     </button>
 
-    <div id="create-album-modal" class="lightbox" onclick="closeCreateAlbumModal(event)">
-        <div class="modal-content" style="background: var(--md-sys-color-surface-container); padding: 24px; border-radius: 28px; width: 400px; max-width: 90%; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
-            <h2 style="margin-top: 0; color: var(--md-sys-color-on-surface);">Create New Album</h2>
-            <div style="margin-bottom: 16px;">
-                <label style="display: block; margin-bottom: 4px; font-weight: 500; color: var(--md-sys-color-on-surface);">Name</label>
-                <input type="text" id="album-name" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline); background: transparent; color: var(--md-sys-color-on-surface); box-sizing: border-box;" placeholder="Album Name">
-            </div>
-            <div style="margin-bottom: 24px;">
-                <label style="display: block; margin-bottom: 4px; font-weight: 500; color: var(--md-sys-color-on-surface);">Description</label>
-                <textarea id="album-desc" rows="3" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--md-sys-color-outline); background: transparent; color: var(--md-sys-color-on-surface); box-sizing: border-box;" placeholder="Optional description"></textarea>
-            </div>
-            <div style="text-align: right;">
-                <button class="md-menu-item" style="display: inline-block; width: auto; margin-right: 8px; background: transparent; border: none; cursor: pointer; color: var(--md-sys-color-on-surface);" onclick="closeCreateAlbumModal({target:{id:'create-album-modal'}})">Cancel</button>
-                <button onclick="submitCreateAlbum()" style="background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer;">Create</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Profile Modal -->
-    <div id="profile-modal" class="lightbox" onclick="closeProfileModal(event)">
-        <div class="modal-content" style="background: var(--md-sys-color-surface-container); padding: 24px; border-radius: 28px; width: 400px; max-width: 90%; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" onclick="event.stopPropagation()">
-            <h2 style="margin-top: 0; color: var(--md-sys-color-on-surface); margin-bottom: 16px;">My Profile</h2>
-            <form id="profile-form">
+    <!-- Create Album Modal -->
+    <div id="create-album-modal" class="lightbox" :class="{ 'active': modals.createAlbum }" x-show="modals.createAlbum" x-transition x-cloak @click="modals.createAlbum = false">
+        <div class="modal-content" style="background: var(--md-sys-color-surface-container); padding: 24px; border-radius: 28px; width: 400px; max-width: 90%; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" @click.stop>
+            <h2 style="margin-top: 0; color: var(--md-sys-color-on-surface); margin-bottom: 16px;">Create Album</h2>
+            <form hx-post="/api/albums" hx-ext="json-enc" @submit="modals.createAlbum = false; setTimeout(() => window.location.reload(), 200);">
                 <div style="margin-bottom: 16px;">
-                    <label style="display: block; font-weight: 500; margin-bottom: 4px;">Avatar</label>
-                    <input type="file" id="profile-avatar-upload" accept="image/png, image/jpeg, image/webp" style="width: 100%; border: 1px solid var(--md-sys-color-outline); border-radius: 8px; padding: 8px; box-sizing: border-box;">
-                </div>
-                <div style="margin-bottom: 16px;">
-                    <label style="display: block; font-weight: 500; margin-bottom: 4px;">Real Name</label>
-                    <input type="text" id="profile-real-name" style="width: 100%; border: 1px solid var(--md-sys-color-outline); border-radius: 8px; padding: 12px; box-sizing: border-box; background: transparent; color: inherit;">
+                    <label style="display: block; font-weight: 500; margin-bottom: 4px;">Name</label>
+                    <input type="text" id="album-name" name="name" required style="width: 100%; border: 1px solid var(--md-sys-color-outline); border-radius: 8px; padding: 12px; box-sizing: border-box; background: transparent; color: inherit;">
                 </div>
                 <div style="margin-bottom: 24px;">
-                    <label style="display: block; font-weight: 500; margin-bottom: 4px;">New Password (leave blank to keep current)</label>
-                    <input type="password" id="profile-password" style="width: 100%; border: 1px solid var(--md-sys-color-outline); border-radius: 8px; padding: 12px; box-sizing: border-box; background: transparent; color: inherit;">
+                    <label style="display: block; font-weight: 500; margin-bottom: 4px;">Description (optional)</label>
+                    <textarea id="album-desc" name="description" rows="3" style="width: 100%; border: 1px solid var(--md-sys-color-outline); border-radius: 8px; padding: 12px; box-sizing: border-box; font-family: inherit; resize: vertical; background: transparent; color: inherit;"></textarea>
                 </div>
                 <div style="text-align: right;">
-                    <button type="button" class="md-menu-item" style="display: inline-block; width: auto; margin-right: 8px; background: transparent; border: none; cursor: pointer; color: var(--md-sys-color-on-surface);" onclick="closeProfileModal({target:{id:'profile-modal'}})">Cancel</button>
-                    <button type="submit" style="background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer;">Save</button>
+                    <button type="button" class="md-menu-item" style="display: inline-block; width: auto; margin-right: 8px; background: transparent; border: none; cursor: pointer; color: var(--md-sys-color-on-surface);" @click="modals.createAlbum = false">Cancel</button>
+                    <button type="submit" style="background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer;">Create</button>
                 </div>
             </form>
         </div>
     </div>
 
+    <!-- Profile Modal -->
+    <!-- Profile Modal (Duplicate removed, relies on SHARED_MODALS) -->
+
     <script src="/js/htmx.min.js" defer></script>
-    <script src="/js/alpine.min.js" defer></script>
+    <script src="/js/json-enc.js" defer></script>
     <script src="/js/core.js" defer></script>
-    <script src="/js/modals.js" defer></script>
-    <script src="/js/gallery.js" defer></script>
-    <script src="/js/upload.js" defer></script>
-    <script src="/js/users.js" defer></script>
+    <script src="/js/state.js" defer></script>
+    <script src="/js/alpine.min.js" defer></script>
 </body>
 </html>

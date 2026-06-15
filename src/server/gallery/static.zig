@@ -332,20 +332,20 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
             });
             return true;
         }
+        if (std.mem.eql(u8, target, "/js/json-enc.js")) {
+            try req.respond(@embedFile("../../js/json-enc.js"), .{
+                .extra_headers = &.{ .{ .name = "Content-Type", .value = "application/javascript" }, .{ .name = "Cache-Control", .value = "public, max-age=31536000, immutable" } },
+            });
+            return true;
+        }
         if (std.mem.eql(u8, target, "/js/core.js")) {
             try req.respond(@embedFile("../../core.js"), .{
                 .extra_headers = &.{ .{ .name = "Content-Type", .value = "application/javascript" }, .{ .name = "Cache-Control", .value = "no-cache" } },
             });
             return true;
         }
-        if (std.mem.eql(u8, target, "/js/gallery.js")) {
-            try req.respond(@embedFile("../../gallery.js"), .{
-                .extra_headers = &.{ .{ .name = "Content-Type", .value = "application/javascript" }, .{ .name = "Cache-Control", .value = "no-cache" } },
-            });
-            return true;
-        }
-        if (std.mem.eql(u8, target, "/js/modals.js")) {
-            try req.respond(@embedFile("../../modals.js"), .{
+        if (std.mem.eql(u8, target, "/js/state.js")) {
+            try req.respond(@embedFile("../../js/state.js"), .{
                 .extra_headers = &.{ .{ .name = "Content-Type", .value = "application/javascript" }, .{ .name = "Cache-Control", .value = "no-cache" } },
             });
             return true;
@@ -371,6 +371,12 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
         if (std.mem.eql(u8, target, "/css/upload.css")) {
             try req.respond(@embedFile("../../upload.css"), .{
                 .extra_headers = &.{ .{ .name = "Content-Type", .value = "text/css" }, .{ .name = "Cache-Control", .value = "no-cache" } },
+            });
+            return true;
+        }
+        if (std.mem.eql(u8, target, "/favicon.ico")) {
+            try req.respond(@embedFile("../../favicon.ico"), .{
+                .extra_headers = &.{ .{ .name = "Content-Type", .value = "image/x-icon" }, .{ .name = "Cache-Control", .value = "public, max-age=86400" } },
             });
             return true;
         }

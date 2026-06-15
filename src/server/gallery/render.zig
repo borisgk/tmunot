@@ -47,20 +47,19 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
     try html.appendSlice(alloc, part1);
 
     // Inject dynamic thumbnail height override in <head>
-    const dynamic_style = try std.fmt.allocPrint(alloc,
-        "<style>:root {{ --target-h: {d}px; }}</style>\n",
-        .{thumbnail_height}
-    );
-    try html.appendSlice(alloc, dynamic_style);
+    var dynamic_style_html: []const u8 = @embedFile("../../templates/components/dynamic_style.html");
+    var target_h_buf: [32]u8 = undefined;
+    const target_h_str = try std.fmt.bufPrint(&target_h_buf, "{d}", .{thumbnail_height});
+    dynamic_style_html = try components.replacePlaceholder(alloc, dynamic_style_html, "<!-- TARGET_H -->", target_h_str);
+    try html.appendSlice(alloc, dynamic_style_html);
 
     // Dynamic LCP Preload in HTML Head: If there are photos, preload the first thumbnail immediately
     if (photos.len > 0) {
         const first_photo = photos[0];
-        const preload_tag = try std.fmt.allocPrint(alloc,
-            "<link rel=\"preload\" as=\"image\" href=\"/thumbnails/{s}.{s}\" fetchpriority=\"high\">",
-            .{ first_photo.uuid, first_photo.extension }
-        );
-        try html.appendSlice(alloc, preload_tag);
+        var preload_tag_html: []const u8 = @embedFile("../../templates/components/preload_tag.html");
+        preload_tag_html = try components.replacePlaceholder(alloc, preload_tag_html, "<!-- UUID -->", first_photo.uuid);
+        preload_tag_html = try components.replacePlaceholder(alloc, preload_tag_html, "<!-- EXT -->", first_photo.extension);
+        try html.appendSlice(alloc, preload_tag_html);
     }
     
     try html.appendSlice(alloc, part2);
@@ -93,20 +92,15 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
     var filter_html = std.ArrayList(u8).empty;
     
     // Year Select
-    try filter_html.appendSlice(alloc, "<div class=\"filter-select-container\"><select id=\"filter-year\" class=\"md-filter-select\" onchange=\"filterGallery()\" aria-label=\"Filter by Year\"><option value=\"all\">All Years</option>");
+    try filter_html.appendSlice(alloc, @embedFile("../../templates/components/filter_select_start.html"));
+    const option_template = @embedFile("../../templates/components/filter_select_option.html");
     for (years_list.items) |y| {
-        const option = try std.fmt.allocPrint(alloc, "<option value=\"{s}\">{s}</option>", .{ y, y });
+        const option = try components.replacePlaceholder(alloc, option_template, "<!-- YEAR -->", y);
         try filter_html.appendSlice(alloc, option);
     }
-    try filter_html.appendSlice(alloc, "</select></div>\n");
+    try filter_html.appendSlice(alloc, @embedFile("../../templates/components/filter_select_end.html"));
 
-    const hardcoded_admin = 
-        \\      <a href="/users" class="md-header-logout-icon-btn" title="User Management" aria-label="User Management">
-        \\          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-        \\              <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.05-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.22-.07.49-.12.61l2.03 1.58c-.04.3-.06.61-.06.94s.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-        \\          </svg>
-        \\      </a>
-    ;
+    const hardcoded_admin = @embedFile("../../templates/components/admin_btn.html");
     var logout_html: []const u8 = @embedFile("../../templates/components/logout.html");
     logout_html = try components.replacePlaceholder(alloc, logout_html, "<!-- ADMIN_BTN -->", hardcoded_admin);
     logout_html = try components.replacePlaceholder(alloc, logout_html, "<!-- AVATAR_HTML -->", "");
@@ -127,7 +121,7 @@ pub fn generateGalleryHtml(_: std.mem.Allocator, username: []const u8, thumbnail
     }
 
     // Append the dynamic spacer to prevent the last row from stretching
-    try html.appendSlice(alloc, "        <div class=\"gallery-spacer\"></div>\n");
+    try html.appendSlice(alloc, @embedFile("../../templates/components/gallery_spacer.html"));
 
     try html.appendSlice(alloc, part4);
 

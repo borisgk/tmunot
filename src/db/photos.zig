@@ -32,6 +32,8 @@ pub const VideoMetadataRecord = struct {
 pub const PhotoExifRecord = struct {
     uuid: []const u8,
     GPSVersionID: ?[]const u8 = null,
+    GPSLatitudeRef: ?[]const u8 = null,
+    GPSLatitude: ?[]const u8 = null,
     InteroperabilityIndex: ?[]const u8 = null,
     InteroperabilityVersion: ?[]const u8 = null,
     GPSLongitudeRef: ?[]const u8 = null,
