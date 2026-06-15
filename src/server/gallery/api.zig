@@ -1,8 +1,7 @@
 const std = @import("std");
 const db = @import("../../db.zig");
 const server = @import("../../server.zig");
-const processor = @import("../../processor.zig");
-const config_mod = @import("../../config.zig");
+
 
 extern "c" fn time(t: ?*i64) i64;
 pub fn handleCreateAlbum(req: *std.http.Server.Request, allocator: std.mem.Allocator, username: []const u8) !void {

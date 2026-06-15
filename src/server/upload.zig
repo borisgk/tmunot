@@ -2,7 +2,7 @@ const std = @import("std");
 
 const config_mod = @import("../config.zig");
 const processor = @import("../processor.zig");
-const exif = @import("../exif.zig");
+
 const vips = @import("../vips.zig");
 const db = @import("../db.zig");
 const logger = @import("../logger.zig");

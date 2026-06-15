@@ -1,6 +1,6 @@
 const std = @import("std");
 const vips = @import("../vips.zig");
-const logger = @import("../logger.zig");
+
 
 const queue = @import("queue.zig");
 const sse = @import("sse.zig");

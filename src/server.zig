@@ -3,9 +3,7 @@ const auth = @import("auth.zig");
 const config_mod = @import("config.zig");
 const processor = @import("processor.zig");
 const db = @import("db.zig");
-const core = @import("db/core.zig");
-const video_meta_mod = @import("video_meta.zig");
-const exif_mod = @import("exif.zig");
+
 
 const server_gallery = @import("server/gallery.zig");
 const server_auth = @import("server/auth.zig");

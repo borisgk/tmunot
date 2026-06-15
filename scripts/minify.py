@@ -227,26 +227,7 @@ def main():
         with open(os.path.join(src_dir, 'upload_gen.html'), 'w', encoding='utf-8') as f:
             f.write(upload_html)
             
-    # Process admin.html
-    admin_path = os.path.join(src_dir, 'admin.html')
-    if os.path.exists(admin_path):
-        with open(admin_path, 'r', encoding='utf-8') as f:
-            admin_html = f.read()
-            
-        admin_html = re.sub(r'<link\s+rel="stylesheet"\s+href="/styles\.css"[^>]*>', css_replacement, admin_html)
-        
-        admin_js_path = os.path.join(src_dir, 'admin.js')
-        if os.path.exists(admin_js_path):
-            with open(admin_js_path, 'r', encoding='utf-8') as f:
-                admin_js = f.read()
-            min_admin_js = minify_js(admin_js)
-            admin_js_replacement = f'<script>{min_admin_js}</script>'
-            admin_html = re.sub(r'<script\s+src="/admin\.js"[^>]*>\s*</script>', admin_js_replacement, admin_html)
-            
-        admin_html = admin_html.replace('<!-- APP_VERSION -->', version)
-        with open(os.path.join(src_dir, 'admin_gen.html'), 'w', encoding='utf-8') as f:
-            f.write(admin_html)
-            
+
     # Process users.html
     users_path = os.path.join(src_dir, 'users.html')
     if os.path.exists(users_path):

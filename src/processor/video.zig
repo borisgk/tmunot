@@ -1,6 +1,6 @@
 const std = @import("std");
 const vips = @import("../vips.zig");
-const logger = @import("../logger.zig");
+
 const db = @import("../db.zig");
 const video_meta = @import("../video_meta.zig");
 const queue = @import("queue.zig");
