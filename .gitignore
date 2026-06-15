@@ -1,5 +1,6 @@
 .zig-cache/
 .agents/
+.antigravity/
 input/
 output/
 zig-out/
