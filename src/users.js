@@ -11,7 +11,7 @@ window.fetch = function() {
         config.headers['X-CSRF-Token'] = getCsrfToken();
     }
     return originalFetch(resource, config);
-}
+};
 
 function logout() {
     fetch('/logout', { method: 'POST' }).then(() => {
