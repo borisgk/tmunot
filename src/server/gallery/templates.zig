@@ -350,13 +350,14 @@ pub fn renderGallerySpacer(writer: anytype) !void {
     );
 }
 
-pub fn renderFilterSelect(writer: anytype, years: [][]const u8) !void {
+pub fn renderFilterSelect(writer: anytype, years: [][]const u8, active_year: ?[]const u8) !void {
     try writer.writeAll(
-        \\<div class="filter-select-container"><select id="filter-year" class="md-filter-select" x-model="filterYear" aria-label="Filter by Year"><option value="all">All Years</option>
+        \\<div class="filter-select-container"><select id="filter-year" class="md-filter-select" name="year" hx-get="/" hx-target="#gallery-grid" hx-swap="innerHTML" hx-push-url="true" x-model="filterYear" aria-label="Filter by Year"><option value="all">All Years</option>
         \\
     );
     for (years) |y| {
-        try writer.print("<option value=\"{s}\">{s}</option>\n", .{ y, y });
+        const selected_attr = if (active_year) |ay| (if (std.mem.eql(u8, ay, y)) " selected" else "") else "";
+        try writer.print("<option value=\"{s}\"{s}>{s}</option>\n", .{ y, selected_attr, y });
     }
     try writer.writeAll(
         \\</select></div>

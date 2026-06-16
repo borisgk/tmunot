@@ -1,7 +1,12 @@
 document.addEventListener('alpine:init', () => {
     Alpine.data('galleryState', () => ({
         selectedPhotos: [],
-        filterYear: 'all',
+        filterYear: new URLSearchParams(window.location.search).get('year') || 'all',
+        init() {
+            window.addEventListener('popstate', () => {
+                this.filterYear = new URLSearchParams(window.location.search).get('year') || 'all';
+            });
+        },
         modals: {
             metadata: false,
             changeDate: false,

@@ -454,6 +454,146 @@ pub fn getUserPhotos(username: []const u8, allocator: std.mem.Allocator) ![]Phot
     return try list.toOwnedSlice(allocator);
 }
 
+pub fn getUserPhotoYears(username: []const u8, allocator: std.mem.Allocator) ![][]const u8 {
+    const io = core.global_io orelse return error.DbNotInitialized;
+    core.db_mutex.lockUncancelable(io);
+    defer core.db_mutex.unlock(io);
+
+    const db = try core.getDb(username);
+
+    const sql = "SELECT DISTINCT year FROM photos WHERE username = ? ORDER BY year DESC;";
+
+    var stmt: ?*core.sqlite3_stmt = null;
+    if (core.sqlite3_prepare_v2(db, sql, -1, &stmt, null) != core.SQLITE_OK) {
+        return error.SqlitePrepareFailed;
+    }
+    defer _ = core.sqlite3_finalize(stmt);
+
+    _ = core.sqlite3_bind_text(stmt, 1, username.ptr, @intCast(username.len), core.SQLITE_TRANSIENT);
+
+    var list = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (list.items) |y| allocator.free(y);
+        list.deinit(allocator);
+    }
+
+    while (true) {
+        const rc = core.sqlite3_step(stmt);
+        if (rc == core.SQLITE_ROW) {
+            const year_c = core.sqlite3_column_text(stmt, 0);
+            const year_len = core.sqlite3_column_bytes(stmt, 0);
+            if (year_c) |yc| {
+                try list.append(allocator, try allocator.dupe(u8, yc[0..@intCast(year_len)]));
+            }
+        } else if (rc == core.SQLITE_DONE) {
+            break;
+        } else {
+            return error.SqliteSelectFailed;
+        }
+    }
+
+    return try list.toOwnedSlice(allocator);
+}
+
+pub fn getUserPhotosFiltered(username: []const u8, year_filter: ?[]const u8, allocator: std.mem.Allocator) ![]PhotoRecord {
+    const io = core.global_io orelse return error.DbNotInitialized;
+    core.db_mutex.lockUncancelable(io);
+    defer core.db_mutex.unlock(io);
+
+    const db = try core.getDb(username);
+
+    const sql = if (year_filter) |yf|
+        if (std.mem.eql(u8, yf, "all"))
+            "SELECT uuid, username, filename, extension, year, month, day, shooting_date, upload_date, width, height FROM photos WHERE username = ? ORDER BY COALESCE(shooting_date, upload_date) DESC, upload_date DESC;"
+        else
+            "SELECT uuid, username, filename, extension, year, month, day, shooting_date, upload_date, width, height FROM photos WHERE username = ? AND year = ? ORDER BY COALESCE(shooting_date, upload_date) DESC, upload_date DESC;"
+    else
+        "SELECT uuid, username, filename, extension, year, month, day, shooting_date, upload_date, width, height FROM photos WHERE username = ? ORDER BY COALESCE(shooting_date, upload_date) DESC, upload_date DESC;";
+
+    var stmt: ?*core.sqlite3_stmt = null;
+    if (core.sqlite3_prepare_v2(db, sql, -1, &stmt, null) != core.SQLITE_OK) {
+        return error.SqlitePrepareFailed;
+    }
+    defer _ = core.sqlite3_finalize(stmt);
+
+    _ = core.sqlite3_bind_text(stmt, 1, username.ptr, @intCast(username.len), core.SQLITE_TRANSIENT);
+    if (year_filter) |yf| {
+        if (!std.mem.eql(u8, yf, "all")) {
+            _ = core.sqlite3_bind_text(stmt, 2, yf.ptr, @intCast(yf.len), core.SQLITE_TRANSIENT);
+        }
+    }
+
+    var list = std.ArrayList(PhotoRecord).empty;
+    errdefer {
+        for (list.items) |r| {
+            allocator.free(r.uuid);
+            allocator.free(r.username);
+            allocator.free(r.filename);
+            allocator.free(r.extension);
+            allocator.free(r.year);
+            allocator.free(r.month);
+            allocator.free(r.day);
+            if (r.shooting_date) |sd| allocator.free(sd);
+            allocator.free(r.upload_date);
+        }
+        list.deinit(allocator);
+    }
+
+    while (true) {
+        const rc = core.sqlite3_step(stmt);
+        if (rc == core.SQLITE_ROW) {
+            const uuid_c = core.sqlite3_column_text(stmt, 0);
+            const username_c = core.sqlite3_column_text(stmt, 1);
+            const filename_c = core.sqlite3_column_text(stmt, 2);
+            const extension_c = core.sqlite3_column_text(stmt, 3);
+            const year_c = core.sqlite3_column_text(stmt, 4);
+            const month_c = core.sqlite3_column_text(stmt, 5);
+            const day_c = core.sqlite3_column_text(stmt, 6);
+            const shooting_c = core.sqlite3_column_text(stmt, 7);
+            const upload_c = core.sqlite3_column_text(stmt, 8);
+
+            const uuid_len = core.sqlite3_column_bytes(stmt, 0);
+            const username_len = core.sqlite3_column_bytes(stmt, 1);
+            const filename_len = core.sqlite3_column_bytes(stmt, 2);
+            const extension_len = core.sqlite3_column_bytes(stmt, 3);
+            const year_len = core.sqlite3_column_bytes(stmt, 4);
+            const month_len = core.sqlite3_column_bytes(stmt, 5);
+            const day_len = core.sqlite3_column_bytes(stmt, 6);
+            const shooting_len = core.sqlite3_column_bytes(stmt, 7);
+            const upload_len = core.sqlite3_column_bytes(stmt, 8);
+
+            const is_null_width = core.sqlite3_column_type(stmt, 9) == core.SQLITE_NULL;
+            const width: ?i32 = if (is_null_width) null else core.sqlite3_column_int(stmt, 9);
+
+            const is_null_height = core.sqlite3_column_type(stmt, 10) == core.SQLITE_NULL;
+            const height: ?i32 = if (is_null_height) null else core.sqlite3_column_int(stmt, 10);
+
+            const shooting_date = if (shooting_c != null) try allocator.dupe(u8, shooting_c[0..@intCast(shooting_len)]) else null;
+
+            try list.append(allocator, PhotoRecord{
+                .uuid = try allocator.dupe(u8, uuid_c[0..@intCast(uuid_len)]),
+                .username = try allocator.dupe(u8, username_c[0..@intCast(username_len)]),
+                .filename = try allocator.dupe(u8, filename_c[0..@intCast(filename_len)]),
+                .extension = try allocator.dupe(u8, extension_c[0..@intCast(extension_len)]),
+                .year = try allocator.dupe(u8, year_c[0..@intCast(year_len)]),
+                .month = try allocator.dupe(u8, month_c[0..@intCast(month_len)]),
+                .day = try allocator.dupe(u8, day_c[0..@intCast(day_len)]),
+                .shooting_date = shooting_date,
+                .upload_date = try allocator.dupe(u8, upload_c[0..@intCast(upload_len)]),
+                .width = width,
+                .height = height,
+            });
+        } else if (rc == core.SQLITE_DONE) {
+            break;
+        } else {
+            std.debug.print("Failed to step getUserPhotosFiltered: {s}\n", .{core.sqlite3_errmsg(db)});
+            return error.SqliteSelectFailed;
+        }
+    }
+
+    return try list.toOwnedSlice(allocator);
+}
+
 pub fn insertPhotoExif(username: []const u8, record: PhotoExifRecord) !void {
     @setEvalBranchQuota(10000);
     const io = core.global_io orelse return error.DbNotInitialized;

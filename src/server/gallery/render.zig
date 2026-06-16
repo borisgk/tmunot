@@ -2,7 +2,13 @@ const std = @import("std");
 const db = @import("../../db.zig");
 const templates = @import("templates.zig");
 
-pub fn generateGalleryHtml(allocator: std.mem.Allocator, username: []const u8, thumbnail_height: i32) ![]u8 {
+pub fn generateGalleryHtml(
+    allocator: std.mem.Allocator,
+    username: []const u8,
+    thumbnail_height: i32,
+    year_filter: ?[]const u8,
+    hx_grid_only: bool,
+) ![]u8 {
     _ = allocator;
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -12,8 +18,21 @@ pub fn generateGalleryHtml(allocator: std.mem.Allocator, username: []const u8, t
     errdefer aw.deinit();
     const writer = &aw.writer;
 
-    // Retrieve user photos from SQLite chronologically.
-    const photos = try db.getUserPhotos(username, alloc);
+    if (hx_grid_only) {
+        // Retrieve filtered user photos from SQLite chronologically.
+        const photos = try db.getUserPhotosFiltered(username, year_filter, alloc);
+
+        // Render only the photos inside the grid, plus the spacer
+        for (photos, 0..) |r, idx| {
+            try templates.renderMediaCard(writer, r, idx);
+        }
+        try templates.renderGallerySpacer(writer);
+
+        return try aw.toOwnedSlice();
+    }
+
+    // Retrieve filtered user photos from SQLite chronologically.
+    const photos = try db.getUserPhotosFiltered(username, year_filter, alloc);
 
     try writer.writeAll(templates.gallery_head_start);
 
@@ -28,6 +47,12 @@ pub fn generateGalleryHtml(allocator: std.mem.Allocator, username: []const u8, t
 
     try writer.writeAll(templates.gallery_body_top);
 
+    // Collect unique years for dynamic filtering dropdown
+    const years_list = try db.getUserPhotoYears(username, alloc);
+
+    // Render filter select
+    try templates.renderFilterSelect(writer, years_list, year_filter);
+
     // Get user to see if admin & avatar
     const user_opt = try db.getUser(username, alloc);
     const is_admin = if (user_opt) |u| u.is_admin else false;
@@ -40,30 +65,6 @@ pub fn generateGalleryHtml(allocator: std.mem.Allocator, username: []const u8, t
     try templates.renderSelectionActions(writer);
 
     try writer.writeAll(templates.gallery_header_end);
-
-    // Collect unique years for dynamic filtering dropdown
-    var years_list = std.ArrayList([]const u8).empty;
-    for (photos) |p| {
-        const ym = templates.getDisplayYearMonth(p);
-        var year_exists = false;
-        for (years_list.items) |y| {
-            if (std.mem.eql(u8, y, ym.year)) {
-                year_exists = true;
-                break;
-            }
-        }
-        if (!year_exists) {
-            try years_list.append(alloc, try alloc.dupe(u8, ym.year));
-        }
-    }
-
-    std.mem.sort([]const u8, years_list.items, {}, struct {
-        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
-            return std.mem.order(u8, a, b) == .gt;
-        }
-    }.lessThan);
-
-    try templates.renderFilterSelect(writer, years_list.items);
 
     try writer.writeAll(templates.gallery_main_start);
 

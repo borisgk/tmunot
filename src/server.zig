@@ -71,6 +71,21 @@ pub fn decodeUrl(allocator: std.mem.Allocator, encoded: []const u8) ![]u8 {
     return allocator.realloc(out, j);
 }
 
+pub fn getQueryParam(allocator: std.mem.Allocator, target: []const u8, key: []const u8) !?[]const u8 {
+    const q_idx = std.mem.indexOfScalar(u8, target, '?') orelse return null;
+    const query = target[q_idx + 1..];
+    var it = std.mem.splitScalar(u8, query, '&');
+    while (it.next()) |pair| {
+        var pair_it = std.mem.splitScalar(u8, pair, '=');
+        const k = pair_it.next() orelse continue;
+        const v = pair_it.next() orelse continue;
+        if (std.mem.eql(u8, k, key)) {
+            return try decodeUrl(allocator, v);
+        }
+    }
+    return null;
+}
+
 /// Escape HTML special characters to prevent XSS when interpolating user content into HTML.
 /// Encodes: & < > " ' → &amp; &lt; &gt; &quot; &#x27;
 pub fn htmlEscape(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
@@ -149,6 +164,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
     var header_csrf: []const u8 = "";
     var boundary_buf: [128]u8 = undefined;
     var multipart_boundary: []const u8 = "";
+    var is_htmx = false;
     var it = req.iterateHeaders();
     while (it.next()) |header| {
         if (std.ascii.eqlIgnoreCase(header.name, "cookie")) {
@@ -167,6 +183,8 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
             }
         } else if (std.ascii.eqlIgnoreCase(header.name, "x-csrf-token")) {
             header_csrf = header.value;
+        } else if (std.ascii.eqlIgnoreCase(header.name, "hx-request")) {
+            is_htmx = std.mem.eql(u8, header.value, "true");
         } else if (std.ascii.eqlIgnoreCase(header.name, "content-type")) {
             if (std.mem.indexOf(u8, header.value, "boundary=")) |boundary_idx| {
                 var b_val = header.value[boundary_idx + 9..];
@@ -197,7 +215,7 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
         }
     }
 
-    if (req.head.method == .GET and std.mem.eql(u8, target, "/")) {
+    if (req.head.method == .GET and (std.mem.eql(u8, target, "/") or std.mem.startsWith(u8, target, "/?"))) {
         if (is_authenticated) {
             var new_cookie: ?[]const u8 = null;
             if (cookie_csrf.len == 0) {
@@ -206,7 +224,18 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
                 new_cookie = try std.fmt.allocPrint(req_alloc, "csrf_token={s}; SameSite=Lax; Path=/", .{csrf});
             }
 
-            const html = try server_gallery.generateGalleryHtml(req_alloc, username orelse "admin", config.gallery_thumbnail_height);
+            var year_filter: ?[]const u8 = null;
+            if (std.mem.startsWith(u8, target, "/?")) {
+                year_filter = try getQueryParam(req_alloc, target, "year");
+            }
+
+            const html = try server_gallery.generateGalleryHtml(
+                req_alloc,
+                username orelse "admin",
+                config.gallery_thumbnail_height,
+                year_filter,
+                is_htmx,
+            );
             defer std.heap.page_allocator.free(html);
             
             if (new_cookie) |cookie_header| {
