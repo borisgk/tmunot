@@ -1,8 +1,7 @@
 const std = @import("std");
 const auth = @import("../auth.zig");
 const db = @import("../db.zig");
-
-const profile_modal_template = @embedFile("../templates/components/profile_modal.html");
+const components = @import("gallery/components.zig");
 
 pub fn handleProfileApi(req: *std.http.Server.Request, io: std.Io, req_alloc: std.mem.Allocator, auth_ctx: *auth.AuthContext, username: []const u8, target: []const u8) !void {
     if (req.head.method == .GET and std.mem.eql(u8, target, "/api/profile-modal")) {
@@ -18,13 +17,12 @@ pub fn handleProfileApi(req: *std.http.Server.Request, io: std.Io, req_alloc: st
             if (u.avatar_ext) |ext| req_alloc.free(ext);
         }
 
-        const components = @import("gallery/components.zig");
-        const html1 = try components.replacePlaceholder(req_alloc, profile_modal_template, "<!-- USERNAME -->", u.username);
-        defer req_alloc.free(html1);
-        const html2 = try components.replacePlaceholder(req_alloc, html1, "<!-- REAL_NAME -->", u.real_name);
-        defer req_alloc.free(html2);
+        var aw = std.Io.Writer.Allocating.init(req_alloc);
+        defer aw.deinit();
+        try components.renderProfileModal(&aw.writer, u.username, u.real_name);
+        const final_html = try aw.toOwnedSlice();
 
-        try req.respond(html2, .{ .extra_headers = &.{.{ .name = "content-type", .value = "text/html" }} });
+        try req.respond(final_html, .{ .extra_headers = &.{.{ .name = "content-type", .value = "text/html" }} });
         return;
     }
 

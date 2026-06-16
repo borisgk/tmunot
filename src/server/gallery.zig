@@ -9,6 +9,9 @@ pub const serveStaticFile = static.serveStaticFile;
 pub const generateGalleryHtml = render.generateGalleryHtml;
 pub const generateAlbumsHtml = render.generateAlbumsHtml;
 pub const generateAlbumDetailHtml = render.generateAlbumDetailHtml;
+pub const generateLoginHtml = render.generateLoginHtml;
+pub const generateUploadHtml = render.generateUploadHtml;
+pub const generateUsersHtml = render.generateUsersHtml;
 
 // api.zig
 pub const handleCreateAlbum = api.handleCreateAlbum;

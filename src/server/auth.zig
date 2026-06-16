@@ -1,22 +1,17 @@
 const std = @import("std");
 const auth = @import("../auth.zig");
 const server = @import("../server.zig");
+const render = @import("gallery/render.zig");
 
 pub fn serveLoginError(req: *std.http.Server.Request, auth_ctx: *auth.AuthContext, req_alloc: std.mem.Allocator, err_msg: []const u8) !void {
     const csrf = try auth_ctx.generateCsrfToken(req_alloc);
 
-    const login_html = @embedFile("../login.html");
-    const size = std.mem.replacementSize(u8, login_html, "<!-- CSRF_TOKEN -->", csrf);
-    const final_html = try req_alloc.alloc(u8, size);
-    _ = std.mem.replace(u8, login_html, "<!-- CSRF_TOKEN -->", csrf, final_html);
-
-    const size2 = std.mem.replacementSize(u8, final_html, "<!-- ERROR_MESSAGE -->", err_msg);
-    const final_html_err = try req_alloc.alloc(u8, size2);
-    _ = std.mem.replace(u8, final_html, "<!-- ERROR_MESSAGE -->", err_msg, final_html_err);
+    const final_html = try render.generateLoginHtml(req_alloc, csrf, err_msg);
+    defer req_alloc.free(final_html);
 
     const cookie_header = try std.fmt.allocPrint(req_alloc, "csrf_token={s}; SameSite=Lax; Path=/", .{csrf});
 
-    try req.respond(final_html_err, .{
+    try req.respond(final_html, .{
         .status = .unauthorized,
         .extra_headers = &.{
             .{ .name = "content-type", .value = "text/html" },

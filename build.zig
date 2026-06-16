@@ -19,8 +19,6 @@ pub fn build(b: *std.Build) void {
     exe.root_module.linkSystemLibrary("exif", .{});
     exe.root_module.linkSystemLibrary("sqlite3", .{});
 
-
-
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
@@ -40,7 +38,6 @@ pub fn build(b: *std.Build) void {
     exe_unit_tests.root_module.linkSystemLibrary("vips", .{});
     exe_unit_tests.root_module.linkSystemLibrary("exif", .{});
     exe_unit_tests.root_module.linkSystemLibrary("sqlite3", .{});
-
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 

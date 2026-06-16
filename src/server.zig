@@ -234,18 +234,12 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
 
         const csrf = try auth_ctx.generateCsrfToken(req_alloc);
 
-        const login_html = @embedFile("login.html");
-        const size = std.mem.replacementSize(u8, login_html, "<!-- CSRF_TOKEN -->", csrf);
-        const final_html = try req_alloc.alloc(u8, size);
-        _ = std.mem.replace(u8, login_html, "<!-- CSRF_TOKEN -->", csrf, final_html);
-
-        const size2 = std.mem.replacementSize(u8, final_html, "<!-- ERROR_MESSAGE -->", "");
-        const final_html_clean = try req_alloc.alloc(u8, size2);
-        _ = std.mem.replace(u8, final_html, "<!-- ERROR_MESSAGE -->", "", final_html_clean);
+        const final_html = try server_gallery.generateLoginHtml(req_alloc, csrf, "");
+        defer req_alloc.free(final_html);
 
         const cookie_header = try std.fmt.allocPrint(req_alloc, "csrf_token={s}; SameSite=Lax; Path=/", .{csrf});
 
-        try req.respond(final_html_clean, .{
+        try req.respond(final_html, .{
             .extra_headers = &.{
                 .{ .name = "content-type", .value = "text/html" },
                 .{ .name = "set-cookie", .value = cookie_header },
@@ -398,7 +392,9 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
             return;
         }
 
-        try req.respond(@embedFile("upload.html"), .{
+        const html = try server_gallery.generateUploadHtml(req_alloc);
+        defer req_alloc.free(html);
+        try req.respond(html, .{
             .extra_headers = &.{
                 .{ .name = "content-type", .value = "text/html" },
                 .{ .name = "cache-control", .value = "no-cache, no-store, must-revalidate" },
@@ -456,7 +452,9 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
             return;
         }
 
-        try req.respond(@embedFile("users.html"), .{
+        const html = try server_gallery.generateUsersHtml(req_alloc);
+        defer req_alloc.free(html);
+        try req.respond(html, .{
             .extra_headers = &.{
                 .{ .name = "content-type", .value = "text/html" },
                 .{ .name = "cache-control", .value = "no-cache, no-store, must-revalidate" },
