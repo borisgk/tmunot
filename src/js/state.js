@@ -125,6 +125,44 @@ document.addEventListener('alpine:init', () => {
         bulkDownload() {
             // Placeholder for bulk download
             alert('Bulk download initiated');
+        },
+        addSelectedPhotosToAlbum() {
+            const selectedRadio = document.querySelector('input[name="selected-album"]:checked');
+            if (!selectedRadio) {
+                alert("Please select an album.");
+                return;
+            }
+            const albumUuid = selectedRadio.value;
+            const photos = this.activePhoto ? [this.activePhoto] : this.selectedPhotos;
+            if (photos.length === 0) return;
+
+            const submitBtn = document.getElementById('submit-add-to-album');
+            const originalText = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Adding...';
+
+            fetch(`/api/albums/${albumUuid}/photos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ photos: photos })
+            })
+            .then(res => {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
+                if (res.ok) {
+                    this.closeAllModals();
+                    this.clearSelection();
+                    showToast("Photos added to album successfully!");
+                } else {
+                    alert("Failed to add photos to album.");
+                }
+            })
+            .catch(err => {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
+                console.error(err);
+                alert("Error adding photos to album.");
+            });
         }
     }));
 });

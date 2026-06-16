@@ -120,6 +120,7 @@ pub fn generateAlbumsHtml(allocator: std.mem.Allocator, username: []const u8) ![
 
     try templates.renderLogout(writer, is_admin, username, avatar_ext);
 
+    try writer.writeAll(templates.gallery_header_end);
     try writer.writeAll(templates.albums_main_start);
 
     if (albums.len == 0) {

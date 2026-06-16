@@ -50,6 +50,30 @@ document.addEventListener('htmx:beforeSwap', (evt) => {
             console.error('Failed to parse metadata JSON:', e);
         }
     }
+    if (xhr.status === 200 && target && (target.id === 'album-list-container' || (target.getAttribute('hx-get') && target.getAttribute('hx-get').includes('/api/albums')))) {
+        try {
+            const albums = JSON.parse(xhr.responseText);
+            let html = '';
+            if (albums.length === 0) {
+                html = '<p style="text-align: center; color: var(--md-sys-color-outline); padding: 16px 0;">No albums created yet.</p>';
+            } else {
+                albums.forEach(album => {
+                    html += `
+                        <label style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; background: var(--md-sys-color-surface-container-high); cursor: pointer; transition: background 0.2s;">
+                            <input type="radio" name="selected-album" value="${album.uuid}" style="accent-color: var(--md-sys-color-primary);">
+                            <div style="display: flex; flex-direction: column;">
+                                <span style="color: var(--md-sys-color-on-surface); font-weight: 500;">${album.name}</span>
+                                <span style="font-size: 0.8rem; color: var(--md-sys-color-outline);">${album.photo_count} photos</span>
+                            </div>
+                        </label>
+                    `;
+                });
+            }
+            evt.detail.serverResponse = html;
+        } catch (e) {
+            console.error('Failed to parse albums JSON:', e);
+        }
+    }
 });
 
 function logout() {

@@ -57,9 +57,12 @@ pub fn renderMediaCard(writer: anytype, r: db.PhotoRecord, idx: usize) !void {
 
     if (is_video) {
         try writer.print(
-            \\        <div class="card video-card" data-uuid="{s}" data-year="{s}" data-month="{s}" data-date="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h));" 
+            \\        <div class="card video-card" x-data="{{ hovered: false }}" @mouseenter="hovered = true" @mouseleave="hovered = false" data-uuid="{s}" data-year="{s}" data-month="{s}" data-date="{s}" style="flex:{d:.4} 1 calc({d:.4} * var(--target-h));" 
             \\             :class="{{ 'selected': selectedPhotos.includes('{s}'), 'menu-open': activeMenuPhoto === '{s}' }}" 
             \\             @click="selectedPhotos.length > 0 ? toggleSelection('{s}') : openLightbox('/previews/{s}.{s}')">
+            \\            <template x-if="hovered">
+            \\                <video src="/hover_previews/{s}.mp4" autoplay loop muted playsinline style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; border-radius: inherit; pointer-events: none;"></video>
+            \\            </template>
             \\            <button class="card-overflow-btn" aria-label="More options" @click.stop.prevent="toggleMenu('{s}', $event)">
             \\                <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
             \\            </button>
@@ -70,7 +73,7 @@ pub fn renderMediaCard(writer: anytype, r: db.PhotoRecord, idx: usize) !void {
             \\                <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
             \\            </div>
             \\            <img src="/thumbnails/{s}.{s}" alt="
-        , .{ r.uuid, ym.year, ym.month, shooting_date_str, ratio, ratio, r.uuid, r.uuid, r.uuid, r.uuid, r.extension, r.uuid, r.uuid, r.uuid, r.extension });
+        , .{ r.uuid, ym.year, ym.month, shooting_date_str, ratio, ratio, r.uuid, r.uuid, r.uuid, r.uuid, r.extension, r.uuid, r.uuid, r.uuid, r.uuid, r.extension });
 
         try writeEscapedHtml(writer, r.filename);
 
@@ -219,7 +222,7 @@ pub fn renderSharedModals(writer: anytype) !void {
         \\            </div>
         \\            <div style="text-align: right;">
         \\                <button class="md-menu-item" style="display: inline-block; width: auto; background: transparent; color: var(--md-sys-color-primary); border: none; padding: 10px 16px; border-radius: 20px; font-weight: 500; cursor: pointer;" @click="closeAllModals()">Cancel</button>
-        \\                <button id="submit-add-to-album" class="md-menu-item" style="display: inline-block; width: auto; background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer; margin-left: 8px;">Add</button>
+        \\                <button id="submit-add-to-album" class="md-menu-item" style="display: inline-block; width: auto; background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer; margin-left: 8px;" @click="addSelectedPhotosToAlbum()">Add</button>
         \\            </div>
         \\        </div>
         \\    </div>
