@@ -12,7 +12,6 @@ pub const Config = struct {
     backend: []const u8,
     quality: i32,
     gallery_thumbnail_height: i32,
-    input_directory: []const u8,
     db_dir: []const u8,
     originals_dir: []const u8,
     previews_dir: []const u8,
@@ -57,7 +56,6 @@ pub fn loadConfig(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !C
         .backend = try allocator.dupe(u8, parsed.value.backend),
         .quality = parsed.value.quality,
         .gallery_thumbnail_height = parsed.value.gallery_thumbnail_height,
-        .input_directory = try allocator.dupe(u8, parsed.value.input_directory),
         .db_dir = try allocator.dupe(u8, parsed.value.db_dir),
         .originals_dir = try allocator.dupe(u8, parsed.value.originals_dir),
         .previews_dir = try allocator.dupe(u8, parsed.value.previews_dir),
@@ -105,7 +103,6 @@ pub fn parseConfigJson(allocator: std.mem.Allocator, json: []const u8) !Config {
         .backend = try allocator.dupe(u8, parsed.value.backend),
         .quality = parsed.value.quality,
         .gallery_thumbnail_height = parsed.value.gallery_thumbnail_height,
-        .input_directory = try allocator.dupe(u8, parsed.value.input_directory),
         .db_dir = try allocator.dupe(u8, parsed.value.db_dir),
         .originals_dir = try allocator.dupe(u8, parsed.value.originals_dir),
         .previews_dir = try allocator.dupe(u8, parsed.value.previews_dir),
@@ -124,7 +121,6 @@ test "parseConfigJson" {
         \\    "backend": "vips",
         \\    "quality": 85,
         \\    "gallery_thumbnail_height": 200,
-        \\    "input_directory": "in",
         \\    "db_dir": "db",
         \\    "originals_dir": "orig",
         \\    "previews_dir": "prev",
@@ -143,7 +139,6 @@ test "parseConfigJson" {
     try testing.expectEqualStrings("vips", config.backend);
     try testing.expectEqual(@as(i32, 85), config.quality);
     try testing.expectEqual(@as(i32, 200), config.gallery_thumbnail_height);
-    try testing.expectEqualStrings("in", config.input_directory);
 
     // Test sorting of outputs (largest target_height first)
     try testing.expectEqual(@as(usize, 2), config.outputs.len);
@@ -154,7 +149,6 @@ test "parseConfigJson" {
 
     // Free all allocated memory
     allocator.free(config.backend);
-    allocator.free(config.input_directory);
     allocator.free(config.db_dir);
     allocator.free(config.originals_dir);
     allocator.free(config.previews_dir);

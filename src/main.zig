@@ -54,7 +54,6 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     }
     defer allocator.free(config.backend);
-    defer allocator.free(config.input_directory);
     defer allocator.free(config.db_dir);
     defer allocator.free(config.originals_dir);
     defer allocator.free(config.previews_dir);
@@ -78,8 +77,6 @@ pub fn main(init: std.process.Init) !void {
     // Worker OS threads push write jobs here; the fiber drains them so all SQLite
     // writes happen from within the correct io context and db_mutex works properly.
     try db.write_queue.startDrainFiber(io);
-
-    std.debug.print("Skipping photo conversion on startup for now.\n", .{});
 
     // Initialize AuthContext
     var auth_ctx = try auth.AuthContext.init(allocator, io, "users.json");
