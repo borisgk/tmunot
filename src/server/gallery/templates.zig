@@ -200,15 +200,57 @@ pub fn renderSharedModals(writer: anytype) !void {
         \\
         \\    <!-- Metadata Modal -->
         \\    <div id="metadata-modal" class="lightbox" :class="{ 'active': modals.metadata }" x-show="modals.metadata" x-transition x-cloak @click="closeAllModals()">
-        \\        <div class="modal-content" style="background: var(--md-sys-color-surface-container); padding: 24px; border-radius: 28px; width: 500px; max-width: 90%; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" @click.stop>
-        \\            <h2 style="margin-top: 0; color: var(--md-sys-color-on-surface); margin-bottom: 16px;">Photo Metadata</h2>
-        \\            <div id="metadata-list" style="overflow-y: auto; flex: 1; margin-bottom: 24px; display: flex; flex-direction: column; gap: 8px;">
-        \\                <div x-html="metadataHtml" hx-get="/api/photos/null/metadata" x-bind:hx-get="`/api/photos/${activePhoto}/metadata`" hx-trigger="loadMetadata from:body">
-        \\                    Loading...
+        \\        <div class="modal-content" style="background: var(--md-sys-color-surface-container); padding: 24px; border-radius: 28px; width: 900px; max-width: 95%; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" @click.stop>
+        \\            
+        \\            <!-- Header -->
+        \\            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; border-bottom: 1px solid var(--md-sys-color-outline-variant); padding-bottom: 16px;">
+        \\                <div>
+        \\                    <h2 style="margin: 0; color: var(--md-sys-color-on-surface); font-size: 1.5rem;" x-text="metadataFilename || 'Photo Metadata'"></h2>
+        \\                    <p style="margin: 4px 0 0 0; font-size: 0.875rem; color: var(--md-sys-color-on-surface-variant);">Details</p>
         \\                </div>
+        \\                <button class="md-menu-item" style="display: inline-block; width: auto; background: transparent; color: var(--md-sys-color-on-surface-variant); border: none; padding: 8px; border-radius: 50%; cursor: pointer;" @click="closeAllModals()" aria-label="Close">
+        \\                    <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        \\                </button>
         \\            </div>
-        \\            <div style="text-align: right;">
-        \\                <button class="md-menu-item" style="display: inline-block; width: auto; background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; padding: 10px 24px; border-radius: 20px; font-weight: 500; cursor: pointer;" @click="closeAllModals()">Close</button>
+        \\            
+        \\            <!-- Content -->
+        \\            <div style="display: flex; flex-wrap: wrap; gap: 24px; overflow-y: auto; flex: 1; padding-right: 8px;">
+        \\                
+        \\                <!-- Left Column: Large Thumbnail -->
+        \\                <div style="flex: 1 1 400px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; position: sticky; top: 0; align-self: flex-start;">
+        \\                    <template x-if="metadataIsVideo && metadataVideoSrc">
+        \\                        <video :src="metadataVideoSrc" controls autoplay loop muted style="width: 100%; max-height: 60vh; object-fit: contain; border-radius: 12px; background: var(--md-sys-color-surface-variant); box-shadow: 0 2px 8px rgba(0,0,0,0.1);"></video>
+        \\                    </template>
+        \\                    <template x-if="!metadataIsVideo && metadataThumbnail">
+        \\                        <img :src="metadataThumbnail" style="width: 100%; max-height: 60vh; object-fit: contain; border-radius: 12px; background: var(--md-sys-color-surface-variant); box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+        \\                    </template>
+        \\                </div>
+        \\                
+        \\                <!-- Right Column: Metadata Table -->
+        \\                <div id="metadata-list" style="flex: 1 1 300px; display: flex; flex-direction: column;">
+        \\                    <template x-if="!metadata">
+        \\                        <div style="display: flex; justify-content: center; padding: 32px; color: var(--md-sys-color-on-surface-variant);">
+        \\                            Loading metadata...
+        \\                        </div>
+        \\                    </template>
+        \\                    <template x-if="metadata && metadata.error">
+        \\                        <div style="color: var(--md-sys-color-error); padding: 16px; background: var(--md-sys-color-error-container); border-radius: 12px;" x-text="metadata.error"></div>
+        \\                    </template>
+        \\                    <template x-if="metadata && !metadata.error">
+        \\                        <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+        \\                            <tbody style="display: flex; flex-direction: column; gap: 4px;">
+        \\                                <template x-for="(value, key) in metadata" :key="key">
+        \\                                    <template x-if="value !== null && key !== 'uuid'">
+        \\                                        <tr style="display: flex; border-bottom: 1px solid var(--md-sys-color-surface-variant); padding: 8px 4px;">
+        \\                                            <th style="flex: 0 0 40%; text-align: left; font-weight: 500; color: var(--md-sys-color-on-surface-variant); padding-right: 16px;" x-text="key"></th>
+        \\                                            <td style="flex: 1; color: var(--md-sys-color-on-surface); word-break: break-word;" x-text="value"></td>
+        \\                                        </tr>
+        \\                                    </template>
+        \\                                </template>
+        \\                            </tbody>
+        \\                        </table>
+        \\                    </template>
+        \\                </div>
         \\            </div>
         \\        </div>
         \\    </div>

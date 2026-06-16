@@ -84,21 +84,50 @@ document.addEventListener('alpine:init', () => {
             this.lightbox.src = '';
         },
 
-        // Metadata HTMX handling
-        metadataHtml: 'Loading...',
+        // Metadata State & Handling
+        metadata: null,
+        metadataFilename: '',
+        metadataThumbnail: '',
+        metadataIsVideo: false,
+        metadataVideoSrc: '',
 
-        openMetadataModal() {
+        async openMetadataModal() {
             if (this.activeMenuPhoto) {
                 this.activePhoto = this.activeMenuPhoto;
                 this.modals.metadata = true;
-                this.metadataHtml = 'Loading...';
-                this.$nextTick(() => {
-                    const el = document.querySelector('[hx-trigger="loadMetadata from:body"]');
-                    if (el) {
-                        htmx.process(el);
+                this.metadata = null; // Show loading state
+
+                const card = document.querySelector(`[data-uuid="${this.activePhoto}"]`);
+                if (card) {
+                    const titleEl = card.querySelector('p');
+                    this.metadataFilename = titleEl ? titleEl.textContent : 'Unknown File';
+                    
+                    const isVideo = card.classList.contains('video-card');
+                    this.metadataIsVideo = isVideo;
+
+                    const imgEl = card.querySelector('img');
+                    if (imgEl) {
+                        const previewSrc = imgEl.src.replace('/thumbnails/', '/previews/');
+                        if (isVideo) {
+                            this.metadataVideoSrc = `/hover_previews/${this.activePhoto}.mp4`;
+                            this.metadataThumbnail = '';
+                        } else {
+                            this.metadataThumbnail = previewSrc;
+                            this.metadataVideoSrc = '';
+                        }
                     }
-                    document.body.dispatchEvent(new Event('loadMetadata'));
-                });
+                }
+
+                try {
+                    const response = await fetch(`/api/photos/${this.activePhoto}/metadata`);
+                    if (response.ok) {
+                        this.metadata = await response.json();
+                    } else {
+                        this.metadata = { error: "Metadata not found" };
+                    }
+                } catch (e) {
+                    this.metadata = { error: "Failed to load metadata" };
+                }
             }
         },
         openChangeDateModal() {
