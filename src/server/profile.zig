@@ -1,7 +1,7 @@
 const std = @import("std");
 const auth = @import("../auth.zig");
 const db = @import("../db.zig");
-const components = @import("gallery/components.zig");
+const templates = @import("gallery/templates.zig");
 
 pub fn handleProfileApi(req: *std.http.Server.Request, io: std.Io, req_alloc: std.mem.Allocator, auth_ctx: *auth.AuthContext, username: []const u8, target: []const u8) !void {
     if (req.head.method == .GET and std.mem.eql(u8, target, "/api/profile-modal")) {
@@ -19,7 +19,7 @@ pub fn handleProfileApi(req: *std.http.Server.Request, io: std.Io, req_alloc: st
 
         var aw = std.Io.Writer.Allocating.init(req_alloc);
         defer aw.deinit();
-        try components.renderProfileModal(&aw.writer, u.username, u.real_name);
+        try templates.renderProfileModal(&aw.writer, u.username, u.real_name);
         const final_html = try aw.toOwnedSlice();
 
         try req.respond(final_html, .{ .extra_headers = &.{.{ .name = "content-type", .value = "text/html" }} });
