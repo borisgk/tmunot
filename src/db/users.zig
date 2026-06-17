@@ -12,8 +12,20 @@ pub const UserRecord = struct {
 var global_users_db: ?*core.sqlite3 = null;
 var global_allocator: std.mem.Allocator = undefined;
 
-pub fn initUsersDb(allocator: std.mem.Allocator, db_path: []const u8) !void {
+extern "c" fn time(t: ?*i64) i64;
+
+pub fn initUsersDb(allocator: std.mem.Allocator, io: std.Io, db_path: []const u8) !void {
     global_allocator = allocator;
+
+    const file_exists = blk: {
+        const cwd = std.Io.Dir.cwd();
+        var f = cwd.openFile(io, db_path, .{}) catch |err| {
+            if (err == error.FileNotFound) break :blk false;
+            return err;
+        };
+        f.close(io);
+        break :blk true;
+    };
     
     var temp_db: ?*core.sqlite3 = null;
     const rc = core.sqlite3_open_v2(
@@ -30,6 +42,33 @@ pub fn initUsersDb(allocator: std.mem.Allocator, db_path: []const u8) !void {
 
     const db = temp_db.?;
     global_users_db = db;
+
+    const current_version = core.getUserVersion(db);
+    const target_version: i32 = 1;
+
+    if (file_exists and current_version < target_version) {
+        const backup_path = try std.fmt.allocPrint(allocator, "{s}.{d}.bak", .{ db_path, time(null) });
+        defer allocator.free(backup_path);
+        
+        const cwd = std.Io.Dir.cwd();
+        var src_file = try cwd.openFile(io, db_path, .{});
+        defer src_file.close(io);
+
+        const size = (try src_file.stat(io)).size;
+        const buffer = try allocator.alloc(u8, @intCast(size));
+        defer allocator.free(buffer);
+
+        var reader = src_file.reader(io, &.{});
+        try reader.interface.readSliceAll(buffer);
+
+        var dst_file = try cwd.createFile(io, backup_path, .{});
+        defer dst_file.close(io);
+
+        var writer = dst_file.writer(io, &.{});
+        try writer.interface.writeAll(buffer);
+
+        std.debug.print("Backup created: {s}\n", .{backup_path});
+    }
 
     var err_msg: [*c]u8 = null;
     const wal_rc = core.sqlite3_exec(db, "PRAGMA journal_mode=WAL;", null, null, &err_msg);
@@ -57,6 +96,10 @@ pub fn initUsersDb(allocator: std.mem.Allocator, db_path: []const u8) !void {
         return error.SqliteExecFailed;
     }
     if (err_msg) |msg| core.sqlite3_free(msg);
+
+    if (current_version < target_version) {
+        core.setUserVersion(db, target_version);
+    }
 }
 
 pub fn deinitUsersDb() void {

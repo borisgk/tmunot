@@ -33,7 +33,7 @@ pub const AuthContext = struct {
         };
 
         const db_path = "users.db";
-        try db.initUsersDb(allocator, db_path);
+        try db.initUsersDb(allocator, io, db_path);
 
         try self.migrateFromJSON(users_file_path);
 

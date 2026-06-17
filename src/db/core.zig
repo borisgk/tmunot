@@ -90,13 +90,116 @@ pub fn init(allocator: std.mem.Allocator, io: std.Io, db_dir: []const u8) !void 
     std.Io.Dir.cwd().createDirPath(io, global_db_dir) catch {};
 }
 
+pub fn getUserVersion(db: ?*sqlite3) i32 {
+    const sql = "PRAGMA user_version;";
+    var stmt: ?*sqlite3_stmt = null;
+    if (sqlite3_prepare_v2(db, sql, @intCast(sql.len), &stmt, null) != SQLITE_OK) return 0;
+    defer _ = sqlite3_finalize(stmt);
+
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        return sqlite3_column_int(stmt, 0);
+    }
+    return 0;
+}
+
+pub fn setUserVersion(db: ?*sqlite3, version: i32) void {
+    const sql = std.fmt.allocPrintSentinel(global_allocator, "PRAGMA user_version = {d};", .{version}, 0) catch return;
+    defer global_allocator.free(sql);
+    var err_msg: [*c]u8 = null;
+    _ = sqlite3_exec(db, sql.ptr, null, null, &err_msg);
+    if (err_msg) |msg| sqlite3_free(msg);
+}
+
+extern "c" fn time(t: ?*i64) i64;
+
+fn backupDatabase(io: std.Io, path: []const u8) !void {
+    const backup_path = try std.fmt.allocPrint(global_allocator, "{s}.{d}.bak", .{ path, time(null) });
+    defer global_allocator.free(backup_path);
+
+    const cwd = std.Io.Dir.cwd();
+    var src_file = try cwd.openFile(io, path, .{});
+    defer src_file.close(io);
+
+    const size = (try src_file.stat(io)).size;
+    const buffer = try global_allocator.alloc(u8, @intCast(size));
+    defer global_allocator.free(buffer);
+
+    var reader = src_file.reader(io, &.{});
+    try reader.interface.readSliceAll(buffer);
+
+    var dst_file = try cwd.createFile(io, backup_path, .{});
+    defer dst_file.close(io);
+
+    var writer = dst_file.writer(io, &.{});
+    try writer.interface.writeAll(buffer);
+
+    std.debug.print("Backup created: {s}\n", .{backup_path});
+}
+
+pub fn syncTableSchema(comptime T: type, db: ?*sqlite3, table_name: []const u8) !void {
+    const field_names = comptime std.meta.fieldNames(T);
+    
+    const sql = try std.fmt.allocPrintSentinel(global_allocator, "PRAGMA table_info(\"{s}\");", .{table_name}, 0);
+    defer global_allocator.free(sql);
+
+    var stmt: ?*sqlite3_stmt = null;
+    if (sqlite3_prepare_v2(db, sql.ptr, @intCast(sql.len), &stmt, null) != SQLITE_OK) return error.SqlitePrepareFailed;
+    defer _ = sqlite3_finalize(stmt);
+
+    var existing_cols = std.StringHashMap(void).init(global_allocator);
+    defer existing_cols.deinit();
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const col_name_c = sqlite3_column_text(stmt, 1);
+        const col_name = std.mem.span(col_name_c);
+        try existing_cols.put(try global_allocator.dupe(u8, col_name), {});
+    }
+    
+    // Check for missing columns
+    inline for (field_names) |field_name| {
+        if (!existing_cols.contains(field_name)) {
+            std.debug.print("Sync: Adding missing column '{s}' to table '{s}'\n", .{ field_name, table_name });
+            const alter_sql = try std.fmt.allocPrintSentinel(global_allocator, "ALTER TABLE \"{s}\" ADD COLUMN \"{s}\" TEXT;", .{ table_name, field_name }, 0);
+            defer global_allocator.free(alter_sql);
+            
+            var err_msg: [*c]u8 = null;
+            const alter_rc = sqlite3_exec(db, alter_sql.ptr, null, null, &err_msg);
+            if (alter_rc != SQLITE_OK) {
+                std.debug.print("Failed to add column: {s}\n", .{err_msg});
+                if (err_msg) |msg| sqlite3_free(msg);
+                return error.SqliteExecFailed;
+            }
+            if (err_msg) |msg| sqlite3_free(msg);
+        }
+    }
+
+    // Cleanup keys
+    var it = existing_cols.keyIterator();
+    while (it.next()) |key| {
+        global_allocator.free(key.*);
+    }
+}
+
 pub fn getDb(username: []const u8) !*sqlite3 {
+    const io = global_io orelse return error.NoGlobalIo;
     if (user_dbs.get(username)) |db| {
         return db;
     }
 
-    const db_path_c = try std.fmt.allocPrintSentinel(global_allocator, "{s}/{s}.db", .{global_db_dir, username}, 0);
+    const db_path = try std.fmt.allocPrint(global_allocator, "{s}/{s}.db", .{ global_db_dir, username });
+    defer global_allocator.free(db_path);
+    const db_path_c = try std.fmt.allocPrintSentinel(global_allocator, "{s}", .{db_path}, 0);
     defer global_allocator.free(db_path_c);
+
+    const file_exists = blk: {
+        const cwd = std.Io.Dir.cwd();
+        var f = cwd.openFile(io, db_path, .{}) catch |err| {
+            if (err == error.FileNotFound) break :blk false;
+            return err;
+        };
+        f.close(io);
+        break :blk true;
+    };
 
     var temp_db: ?*sqlite3 = null;
     const rc = sqlite3_open_v2(
@@ -112,6 +215,13 @@ pub fn getDb(username: []const u8) !*sqlite3 {
     }
 
     const db = temp_db.?;
+
+    const current_version = getUserVersion(db);
+    const target_version: i32 = 1;
+
+    if (file_exists and current_version < target_version) {
+        try backupDatabase(io, db_path);
+    }
 
     var err_msg: [*c]u8 = null;
     const wal_rc = sqlite3_exec(db, "PRAGMA journal_mode=WAL;", null, null, &err_msg);
@@ -210,6 +320,15 @@ pub fn getDb(username: []const u8) !*sqlite3 {
         return error.SqliteExecFailed;
     }
     if (err_msg) |msg| sqlite3_free(msg);
+
+    // Automatically sync dynamic tables
+    try syncTableSchema(photos.PhotoExifRecord, db, "photo_exif");
+    try syncTableSchema(photos.VideoMetadataRecord, db, "video_metadata");
+
+    // After all migrations are successful, set the version
+    if (current_version < target_version) {
+        setUserVersion(db, target_version);
+    }
 
     const username_dup = try global_allocator.dupe(u8, username);
     try user_dbs.put(username_dup, db);
