@@ -28,3 +28,4 @@ databases/
 *.db-shm
 *.db-wal
 zig-pkg/
+*.bak
