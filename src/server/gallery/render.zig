@@ -22,11 +22,23 @@ pub fn generateGalleryHtml(
         // Retrieve filtered user photos from SQLite chronologically.
         const photos = try db.getUserPhotosFiltered(username, year_filter, alloc);
 
-        // Render only the photos inside the grid, plus the spacer
+        var last_year: ?[]const u8 = null;
         for (photos, 0..) |r, idx| {
+            const ym = templates.getDisplayYearMonth(r);
+            if (last_year == null or !std.mem.eql(u8, last_year.?, ym.year)) {
+                if (last_year != null) {
+                    try templates.renderGallerySpacer(writer);
+                    try writer.writeAll("</div>\n");
+                }
+                try writer.print("<h2 class=\"year-delimiter\">{s}</h2>\n<div class=\"gallery\">\n", .{ym.year});
+                last_year = ym.year;
+            }
             try templates.renderMediaCard(writer, r, idx);
         }
-        try templates.renderGallerySpacer(writer);
+        if (last_year != null) {
+            try templates.renderGallerySpacer(writer);
+            try writer.writeAll("</div>\n");
+        }
 
         return try aw.toOwnedSlice();
     }
@@ -69,12 +81,24 @@ pub fn generateGalleryHtml(
     try writer.writeAll(templates.gallery_main_start);
 
     // Render photos
+    var last_year: ?[]const u8 = null;
     for (photos, 0..) |r, idx| {
+        const ym = templates.getDisplayYearMonth(r);
+        if (last_year == null or !std.mem.eql(u8, last_year.?, ym.year)) {
+            if (last_year != null) {
+                try templates.renderGallerySpacer(writer);
+                try writer.writeAll("</div>\n");
+            }
+            try writer.print("<h2 class=\"year-delimiter\">{s}</h2>\n<div class=\"gallery\">\n", .{ym.year});
+            last_year = ym.year;
+        }
         try templates.renderMediaCard(writer, r, idx);
     }
 
-    // Dynamic spacer to prevent the last row from stretching
-    try templates.renderGallerySpacer(writer);
+    if (last_year != null) {
+        try templates.renderGallerySpacer(writer);
+        try writer.writeAll("</div>\n");
+    }
 
     try writer.writeAll(templates.gallery_lightbox);
 
@@ -194,10 +218,23 @@ pub fn generateAlbumDetailHtml(allocator: std.mem.Allocator, username: []const u
     if (photos.len == 0) {
         try templates.renderAlbumPhotosEmpty(writer);
     } else {
+        var last_year: ?[]const u8 = null;
         for (photos, 0..) |r, idx| {
+            const ym = templates.getDisplayYearMonth(r);
+            if (last_year == null or !std.mem.eql(u8, last_year.?, ym.year)) {
+                if (last_year != null) {
+                    try templates.renderGallerySpacer(writer);
+                    try writer.writeAll("</div>\n");
+                }
+                try writer.print("<h2 class=\"year-delimiter\">{s}</h2>\n<div class=\"gallery\">\n", .{ym.year});
+                last_year = ym.year;
+            }
             try templates.renderMediaCard(writer, r, idx);
         }
-        try templates.renderGallerySpacer(writer);
+        if (last_year != null) {
+            try templates.renderGallerySpacer(writer);
+            try writer.writeAll("</div>\n");
+        }
     }
 
     try writer.writeAll(templates.gallery_lightbox);

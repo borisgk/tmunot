@@ -140,6 +140,16 @@ body {
     transform: scale(0.95);
 }
 
+/* Year Delimiter styling */
+.year-delimiter {
+    font-size: 1.5rem;
+    font-weight: 500;
+    color: var(--md-sys-color-on-surface);
+    margin: 1rem 0 0.5rem 0;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
 /* Justified gallery layout — automatic responsive rows at equal height */
 .gallery {
     display: flex;

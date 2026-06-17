@@ -963,7 +963,7 @@ pub const album_detail_desc_start =
 pub const album_detail_desc_end =
     \\</p>
     \\        </div>
-    \\        <div class="gallery" id="gallery-grid">
+    \\        <div id="gallery-grid" style="display: flex; flex-direction: column; gap: 2rem;">
     \\
 ;
 
@@ -1063,7 +1063,7 @@ pub const gallery_header_end =
 
 pub const gallery_main_start =
     \\    <main class="gallery-container">
-    \\        <div class="gallery" id="gallery-grid">
+    \\        <div id="gallery-grid" style="display: flex; flex-direction: column; gap: 2rem;">
     \\
 ;
 
