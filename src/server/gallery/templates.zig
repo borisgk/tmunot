@@ -469,7 +469,7 @@ pub fn renderUploadHtml(writer: anytype) !void {
         \\
         \\<body class="gallery-body">
         \\    <div class="upload-container" x-data="uploadState">
-        \\        <h2 style="display: flex; align-items: baseline; justify-content: center;">Upload Media <span style="font-size: 0.8rem; font-weight: 400; opacity: 0.7; margin-left: 8px;">v0.0.20</span></h2>
+        \\        <h2 style="display: flex; align-items: baseline; justify-content: center;">Upload Media <span style="font-size: 0.8rem; font-weight: 400; opacity: 0.7; margin-left: 8px;">v0.0.23</span></h2>
         \\        <p class="subtitle">Select or drag and drop your files to upload them to the gallery</p>
         \\
         \\        <div id="dropzone" class="dropzone"
@@ -780,7 +780,7 @@ pub fn renderUsersHtml(writer: anytype) !void {
         \\                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
         \\            </a>
         \\        </div>
-        \\        <span class="md-top-app-bar__title" style="display: flex; align-items: baseline; justify-content: center;">Admin <span style="font-size: 0.8rem; font-weight: 400; opacity: 0.7; margin-left: 8px;">v0.0.20</span></span>
+        \\        <span class="md-top-app-bar__title" style="display: flex; align-items: baseline; justify-content: center;">Admin <span style="font-size: 0.8rem; font-weight: 400; opacity: 0.7; margin-left: 8px;">v0.0.23</span></span>
         \\        <div class="md-top-app-bar__actions">
         \\            <form method="POST" action="/logout" style="margin: 0;">
         \\                <button type="submit" class="md-header-logout-icon-btn" title="Logout" aria-label="Logout">
@@ -914,7 +914,7 @@ pub const albums_body_top =
     \\                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
     \\            </a>
     \\        </div>
-    \\        <span class="md-top-app-bar__title" id="app-bar-title" style="display: flex; align-items: baseline;">Albums <span style="font-size: 0.8rem; font-weight: 400; opacity: 0.7; margin-left: 8px;">v0.0.20</span></span>
+    \\        <span class="md-top-app-bar__title" id="app-bar-title" style="display: flex; align-items: baseline;">Albums <span style="font-size: 0.8rem; font-weight: 400; opacity: 0.7; margin-left: 8px;">v0.0.23</span></span>
     \\        <div class="md-top-app-bar__actions" id="app-bar-actions">
     \\
 ;
@@ -959,7 +959,7 @@ pub const album_detail_body_top =
 ;
 
 pub const album_detail_body_title_end =
-    \\ <span style="font-size: 0.8rem; font-weight: 400; opacity: 0.7; margin-left: 8px;">v0.0.20</span></span>
+    \\ <span style="font-size: 0.8rem; font-weight: 400; opacity: 0.7; margin-left: 8px;">v0.0.23</span></span>
     \\            </template>
     \\        </span>
     \\        <div class="md-top-app-bar__actions" id="app-bar-actions">
