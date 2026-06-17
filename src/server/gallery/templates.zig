@@ -794,8 +794,27 @@ pub fn renderUsersHtml(writer: anytype) !void {
         \\
         \\    <main class="admin-container">
         \\        <section class="admin-section">
+        \\            <h2>User Management</h2>
         \\            <div id="users-grid" class="users-grid">
         \\                <!-- Loaded dynamically -->
+        \\            </div>
+        \\        </section>
+        \\
+        \\        <section class="admin-section">
+        \\            <h2>System Maintenance</h2>
+        \\            <div style="background: var(--md-sys-color-surface-container); border-radius: var(--md-sys-shape-corner-large); padding: 24px; margin-top: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+        \\                <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+        \\                    <div>
+        \\                        <h3 style="margin: 0; font-size: 1.1rem; font-weight: 500; color: var(--md-sys-color-on-surface);">Refresh Metadata</h3>
+        \\                        <p style="margin: 4px 0 0 0; font-size: 0.9rem; color: var(--md-sys-color-on-surface-variant);">Rescans all original media files and repopulates EXIF and video metadata tables. This may take some time.</p>
+        \\                    </div>
+        \\                    <button class="btn-primary" 
+        \\                            hx-post="/api/admin/refresh-metadata" 
+        \\                            hx-swap="none"
+        \\                            hx-on::after-request="if(event.detail.successful) { alert('Metadata refresh started in background.'); } else { alert('Failed to start metadata refresh.'); }">
+        \\                        Refresh All Metadata
+        \\                    </button>
+        \\                </div>
         \\            </div>
         \\        </section>
         \\
@@ -866,8 +885,9 @@ pub fn renderUsersHtml(writer: anytype) !void {
         \\
         \\    <script src="/js/htmx.min.js" defer></script>
         \\    <script src="/js/alpine.min.js" defer></script>
+        \\    <script src="/js/core.js" defer></script>
+        \\    <script src="/js/users.js" defer></script>
         \\    <script src="/js/state.js" defer></script>
-        \\    <script src="/js/alpine.min.js" defer></script>
         \\</body>
         \\</html>
         \\

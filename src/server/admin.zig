@@ -1,11 +1,24 @@
 const std = @import("std");
 const auth = @import("../auth.zig");
 const config_mod = @import("../config.zig");
+const refresh_mod = @import("../processor/refresh.zig");
 
-pub fn handleAdminApi(req: *std.http.Server.Request, _: std.Io, req_alloc: std.mem.Allocator, auth_ctx: *auth.AuthContext, _: config_mod.Config, username: []const u8) !void {
+pub fn handleAdminApi(req: *std.http.Server.Request, io: std.Io, req_alloc: std.mem.Allocator, auth_ctx: *auth.AuthContext, config: config_mod.Config, username: []const u8) !void {
     const target = req.head.target;
 
+    // POST /api/admin/refresh-metadata
+    if (req.head.method == .POST and std.mem.eql(u8, target, "/api/admin/refresh-metadata")) {
+        // Spawn a background thread to handle the refresh
+        // We use a dedicated allocator for the thread to avoid sharing req_alloc
+        const thread_alloc = std.heap.page_allocator;
+        const thread = try std.Thread.spawn(.{}, refresh_mod.refreshMetadataTask, .{ io, thread_alloc, auth_ctx, config });
+        thread.detach();
 
+        try req.respond("{\"status\":\"started\"}", .{
+            .extra_headers = &.{ .{ .name = "content-type", .value = "application/json" } },
+        });
+        return;
+    }
 
     // GET /api/admin/users
     if (req.head.method == .GET and std.mem.eql(u8, target, "/api/admin/users")) {
