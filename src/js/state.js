@@ -130,10 +130,75 @@ document.addEventListener('alpine:init', () => {
                 }
             }
         },
-        openChangeDateModal() {
+        async openChangeDateModal() {
             if (this.activeMenuPhoto) {
                 this.activePhoto = this.activeMenuPhoto;
                 this.modals.changeDate = true;
+                
+                const input = document.getElementById('change-date-input');
+                if (input) {
+                    input.value = '';
+                }
+                
+                try {
+                    const response = await fetch(`/api/photos/${this.activePhoto}/date`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data && data.date) {
+                            // Convert YYYY-MM-DD HH:MM:SS format to YYYY-MM-DDTHH:MM:SS for datetime-local
+                            const formattedDate = data.date.trim().replace(' ', 'T');
+                            if (input) {
+                                input.value = formattedDate;
+                            }
+                        }
+                    } else {
+                        console.error('Failed to fetch photo date');
+                    }
+                } catch (e) {
+                    console.error('Error fetching photo date:', e);
+                }
+            }
+        },
+        async changePhotoDate() {
+            const input = document.getElementById('change-date-input');
+            if (!input || !this.activePhoto) return;
+
+            const dateValue = input.value;
+            if (!dateValue) {
+                alert("Please select a date and time.");
+                return;
+            }
+
+            const saveBtn = document.querySelector('#change-date-modal button[type="submit"]');
+            const originalText = saveBtn ? saveBtn.textContent : 'Save';
+            if (saveBtn) {
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Saving...';
+            }
+
+            try {
+                const response = await fetch(`/api/photos/${this.activePhoto}/date`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ date: dateValue })
+                });
+
+                if (response.ok) {
+                    this.closeAllModals();
+                    showToast("Photo date updated successfully!");
+                    setTimeout(() => window.location.reload(), 500);
+                } else {
+                    const text = await response.text();
+                    alert(`Failed to update photo date: ${text}`);
+                }
+            } catch (e) {
+                console.error(e);
+                alert("Error updating photo date.");
+            } finally {
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = originalText;
+                }
             }
         },
         openAddToAlbumModal() {

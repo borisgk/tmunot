@@ -401,6 +401,15 @@ fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.S
         return;
     }
 
+    if (req.head.method == .GET and std.mem.startsWith(u8, target, "/api/photos/") and std.mem.endsWith(u8, target, "/date")) {
+        if (!is_authenticated or username == null) {
+            try req.respond("Unauthorized", .{ .status = .unauthorized });
+            return;
+        }
+        try server_photos.handleGetPhotoDate(req, req_alloc, username.?, target);
+        return;
+    }
+
     if (req.head.method == .PUT and std.mem.startsWith(u8, target, "/api/photos/") and std.mem.endsWith(u8, target, "/date")) {
         if (!is_authenticated or username == null) {
             try req.respond("Unauthorized", .{ .status = .unauthorized });

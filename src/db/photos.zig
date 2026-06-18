@@ -869,3 +869,32 @@ pub fn updatePhotoDate(username: []const u8, uuid: []const u8, year: []const u8,
         return error.SqliteUpdateFailed;
     }
 }
+
+pub fn getPhotoDate(username: []const u8, uuid: []const u8, allocator: std.mem.Allocator) !?[]const u8 {
+    const io = core.global_io orelse return error.DbNotInitialized;
+    core.db_mutex.lockUncancelable(io);
+    defer core.db_mutex.unlock(io);
+
+    const db = try core.getDb(username);
+
+    const sql = "SELECT COALESCE(shooting_date, upload_date) FROM photos WHERE uuid = ?;";
+
+    var stmt: ?*core.sqlite3_stmt = null;
+    if (core.sqlite3_prepare_v2(db, sql, -1, &stmt, null) != core.SQLITE_OK) {
+        return error.SqlitePrepareFailed;
+    }
+    defer _ = core.sqlite3_finalize(stmt);
+
+    _ = core.sqlite3_bind_text(stmt, 1, uuid.ptr, @intCast(uuid.len), core.SQLITE_TRANSIENT);
+
+    const rc = core.sqlite3_step(stmt);
+    if (rc == core.SQLITE_ROW) {
+        const date_c = core.sqlite3_column_text(stmt, 0);
+        const date_len = core.sqlite3_column_bytes(stmt, 0);
+        if (date_c != null) {
+            return try allocator.dupe(u8, date_c[0..@intCast(date_len)]);
+        }
+    }
+    return null;
+}
+

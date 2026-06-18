@@ -85,6 +85,31 @@ pub fn handleRefreshMetadata(req: *std.http.Server.Request, io: std.Io, req_allo
     try req.respond("Bad Request", .{ .status = .bad_request });
 }
 
+pub fn handleGetPhotoDate(req: *std.http.Server.Request, req_alloc: std.mem.Allocator, username: []const u8, target: []const u8) !void {
+    const raw_photo_uuid = target[12 .. target.len - 5];
+    if (raw_photo_uuid.len == 36) {
+        const photo_uuid = try req_alloc.dupe(u8, raw_photo_uuid);
+        if (try db.getPhotoDate(username, photo_uuid, req_alloc)) |date_str| {
+            const Response = struct {
+                date: []const u8,
+            };
+            const resp = Response{ .date = date_str };
+            var aw: std.Io.Writer.Allocating = .init(req_alloc);
+            try std.json.Stringify.value(resp, .{}, &aw.writer);
+            try req.respond(aw.written(), .{
+                .extra_headers = &.{
+                    .{ .name = "content-type", .value = "application/json" },
+                },
+            });
+            return;
+        } else {
+            try req.respond("Not Found", .{ .status = .not_found });
+            return;
+        }
+    }
+    try req.respond("Bad Request", .{ .status = .bad_request });
+}
+
 extern "c" fn rename(old: [*c]const u8, new: [*c]const u8) c_int;
 
 pub fn handleChangeDate(req: *std.http.Server.Request, req_alloc: std.mem.Allocator, username: []const u8, target: []const u8, config: config_mod.Config) !void {

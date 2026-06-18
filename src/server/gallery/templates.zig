@@ -273,7 +273,7 @@ pub fn renderSharedModals(writer: anytype) !void {
         \\    <div id="change-date-modal" class="lightbox" :class="{ 'active': modals.changeDate }" x-show="modals.changeDate" x-transition x-cloak @click="closeAllModals()">
         \\        <div class="modal-content" style="background: var(--md-sys-color-surface-container); padding: 24px; border-radius: 28px; width: 350px; max-width: 90%; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" @click.stop>
         \\            <h3 style="margin-top: 0; color: var(--md-sys-color-on-surface); margin-bottom: 16px;">Change Date/Time</h3>
-        \\            <form hx-ext="json-enc" x-bind:hx-put="`/api/photos/${activePhoto}/date`" @submit="closeAllModals(); setTimeout(() => window.location.reload(), 200);">
+        \\            <form @submit.prevent="changePhotoDate()">
         \\                <input type="datetime-local" step="1" id="change-date-input" name="date" style="width: 100%; padding: 12px; border-radius: 12px; border: 1px solid var(--md-sys-color-outline); background: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface); font-family: inherit; font-size: 16px; margin-bottom: 24px; box-sizing: border-box;" />
         \\                <div style="text-align: right;">
         \\                    <button type="button" class="md-menu-item" style="display: inline-block; width: auto; background: transparent; color: var(--md-sys-color-primary); border: none; padding: 10px 16px; border-radius: 20px; font-weight: 500; cursor: pointer; margin-right: 8px;" @click="closeAllModals()">Cancel</button>
