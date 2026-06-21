@@ -137,16 +137,29 @@ fn handleConnection(stream: std.Io.net.Stream, io: std.Io, auth_ctx: *auth.AuthC
     
     var server = std.http.Server.init(&reader.interface, &writer.interface);
 
-    var request = server.receiveHead() catch |err| {
-        if (err != error.HttpConnectionClosing) {
-            std.debug.print("Failed to receive request head: {}\n", .{err});
-        }
-        return;
-    };
+    while (true) {
+        var request = server.receiveHead() catch |err| {
+            if (err != error.HttpConnectionClosing) {
+                std.debug.print("Failed to receive request head: {}\n", .{err});
+            }
+            return;
+        };
 
-    handleRequest(&request, io, stream, auth_ctx, config) catch |err| {
-        std.debug.print("Error handling request: {}\n", .{err});
-    };
+        const keep_alive = request.head.keep_alive;
+
+        handleRequest(&request, io, stream, auth_ctx, config) catch |err| {
+            std.debug.print("Error handling request: {}\n", .{err});
+            return;
+        };
+
+        if (std.mem.startsWith(u8, request.head.target, "/upload/events")) {
+            return;
+        }
+
+        if (!keep_alive) {
+            return;
+        }
+    }
 }
 
 fn handleRequest(req: *std.http.Server.Request, io: std.Io, stream: std.Io.net.Stream, auth_ctx: *auth.AuthContext, config: config_mod.Config) !void {
