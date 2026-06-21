@@ -232,10 +232,7 @@ pub fn serveStaticFile(allocator: std.mem.Allocator, req: *std.http.Server.Reque
                 break;
             };
             if (read_amt == 0) break;
-            response.writer.writeAll(chunk_buf[0..read_amt]) catch |err| {
-                std.debug.print("Failed to write chunk to client: {}\n", .{err});
-                break;
-            };
+            response.writer.writeAll(chunk_buf[0..read_amt]) catch break;
             bytes_left -= read_amt;
             current_offset += read_amt;
         }

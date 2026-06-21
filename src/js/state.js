@@ -83,6 +83,55 @@ document.addEventListener('alpine:init', () => {
             this.lightbox.isOpen = false;
             this.lightbox.src = '';
         },
+        getLightboxItems() {
+            const cards = Array.from(document.querySelectorAll('.card'));
+            return cards.map(card => {
+                const img = card.querySelector('img');
+                if (img) {
+                    const src = img.getAttribute('src');
+                    if (src) {
+                        return src.replace('/thumbnails/', '/previews/');
+                    }
+                }
+                return null;
+            }).filter(Boolean);
+        },
+        nextLightboxItem() {
+            if (!this.lightbox.isOpen) return;
+            const items = this.getLightboxItems();
+            if (items.length === 0) return;
+            const currentIndex = items.findIndex(item => {
+                try {
+                    const url1 = new URL(item, window.location.origin);
+                    const url2 = new URL(this.lightbox.src, window.location.origin);
+                    return url1.pathname === url2.pathname;
+                } catch(e) {
+                    return item === this.lightbox.src;
+                }
+            });
+            if (currentIndex !== -1) {
+                const nextIndex = (currentIndex + 1) % items.length;
+                this.openLightbox(items[nextIndex]);
+            }
+        },
+        prevLightboxItem() {
+            if (!this.lightbox.isOpen) return;
+            const items = this.getLightboxItems();
+            if (items.length === 0) return;
+            const currentIndex = items.findIndex(item => {
+                try {
+                    const url1 = new URL(item, window.location.origin);
+                    const url2 = new URL(this.lightbox.src, window.location.origin);
+                    return url1.pathname === url2.pathname;
+                } catch(e) {
+                    return item === this.lightbox.src;
+                }
+            });
+            if (currentIndex !== -1) {
+                const prevIndex = (currentIndex - 1 + items.length) % items.length;
+                this.openLightbox(items[prevIndex]);
+            }
+        },
 
         // Metadata State & Handling
         metadata: null,
