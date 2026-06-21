@@ -34,10 +34,10 @@ ssh "$TARGET_HOST" << EOF
         sudo pacman -S --noconfirm jq
     fi
 
-    # Automatically provision/update Zig Nightly cleanly if missing
+    # Automatically provision/update Zig 0.16.0 cleanly if missing
     if ! command -v zig &> /dev/null; then
-        echo "📥 Zig not found. Installing latest Zig Nightly..."
-        TARBALL_URL=\$(curl -s https://ziglang.org/download/index.json | jq -r '.master."x86_64-linux".tarball')
+        echo "📥 Zig not found. Installing Zig 0.16.0..."
+        TARBALL_URL=\$(curl -s https://ziglang.org/download/index.json | jq -r '."0.16.0"."x86_64-linux".tarball')
         
         # Clean up any botched previous installations
         sudo rm -rf /usr/local/bin/zig
