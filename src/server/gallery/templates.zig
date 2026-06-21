@@ -1094,8 +1094,12 @@ pub const gallery_lightbox =
     \\    <div id="lightbox" class="lightbox" :class="{ 'active': lightbox.isOpen }" x-show="lightbox.isOpen" x-transition x-cloak @click="closeLightbox()" @keydown.escape.window="closeLightbox()" @keydown.left.window="prevLightboxItem()" @keydown.right.window="nextLightboxItem()">
     \\        <div class="loader"></div>
     \\        <span class="close-btn">&times;</span>
-    \\        <button class="lightbox-arrow left" @click.stop="prevLightboxItem()">&lsaquo;</button>
-    \\        <button class="lightbox-arrow right" @click.stop="nextLightboxItem()">&rsaquo;</button>
+    \\        <button class="lightbox-arrow left" @click.stop="prevLightboxItem()" aria-label="Previous">
+    \\            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+    \\        </button>
+    \\        <button class="lightbox-arrow right" @click.stop="nextLightboxItem()" aria-label="Next">
+    \\            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+    \\        </button>
     \\        <template x-if="!lightbox.isVideo">
     \\            <img id="lightbox-img" :src="lightbox.src" alt="Preview">
     \\        </template>
