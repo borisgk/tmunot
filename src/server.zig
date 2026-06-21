@@ -145,6 +145,7 @@ fn handleConnection(stream: std.Io.net.Stream, io: std.Io, auth_ctx: *auth.AuthC
             return;
         };
 
+        const is_sse = std.mem.startsWith(u8, request.head.target, "/upload/events");
         const keep_alive = request.head.keep_alive;
 
         handleRequest(&request, io, stream, auth_ctx, config) catch |err| {
@@ -152,11 +153,7 @@ fn handleConnection(stream: std.Io.net.Stream, io: std.Io, auth_ctx: *auth.AuthC
             return;
         };
 
-        if (std.mem.startsWith(u8, request.head.target, "/upload/events")) {
-            return;
-        }
-
-        if (!keep_alive) {
+        if (is_sse or !keep_alive) {
             return;
         }
     }
