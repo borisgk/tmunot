@@ -12,7 +12,7 @@ if [ ! -f "$ZON_FILE" ]; then
 fi
 
 # Extract current version
-CURRENT_VERSION=$(grep -oP '(?<=\.version = ")[0-9]+\.[0-9]+\.[0-9]+' "$ZON_FILE")
+CURRENT_VERSION=$(awk -F '"' '/\.version =/ {print $2}' "$ZON_FILE")
 
 if [ -z "$CURRENT_VERSION" ]; then
     echo "Error: Could not extract version from $ZON_FILE"
@@ -42,7 +42,8 @@ NEW_VERSION="$MAJOR.$MINOR.$PATCH"
 echo "Bumping version from $CURRENT_VERSION to $NEW_VERSION..."
 
 # Update build.zig.zon
-sed -i "s/\.version = \"$CURRENT_VERSION\"/\.version = \"$NEW_VERSION\"/" "$ZON_FILE"
+sed "s/\.version = \"$CURRENT_VERSION\"/\.version = \"$NEW_VERSION\"/" "$ZON_FILE" > "${ZON_FILE}.tmp"
+mv "${ZON_FILE}.tmp" "$ZON_FILE"
 
 # Commit the change
 git add "$ZON_FILE"
