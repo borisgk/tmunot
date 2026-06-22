@@ -139,7 +139,13 @@ fn handleConnection(stream: std.Io.net.Stream, io: std.Io, auth_ctx: *auth.AuthC
 
     while (true) {
         var request = server.receiveHead() catch |err| {
-            if (err != error.HttpConnectionClosing) {
+            if (err != error.HttpConnectionClosing and
+                err != error.ReadFailed and
+                err != error.EndOfStream and
+                err != error.ConnectionResetByPeer and
+                err != error.BrokenPipe and
+                err != error.ConnectionAborted)
+            {
                 std.debug.print("Failed to receive request head: {}\n", .{err});
             }
             return;

@@ -72,16 +72,35 @@ document.addEventListener('alpine:init', () => {
         lightbox: {
             isOpen: false,
             src: '',
-            isVideo: false
+            isVideo: false,
+            items: [],
+            currentIndex: -1
         },
         openLightbox(src) {
             this.lightbox.src = src;
             this.lightbox.isVideo = src.match(/\.(mp4|mov|m4v|webm|avi)$/i) !== null;
+            
+            if (!this.lightbox.isOpen) {
+                this.lightbox.items = this.getLightboxItems();
+            }
+            
+            this.lightbox.currentIndex = this.lightbox.items.findIndex(item => {
+                try {
+                    const url1 = new URL(item, window.location.origin);
+                    const url2 = new URL(src, window.location.origin);
+                    return url1.pathname === url2.pathname;
+                } catch(e) {
+                    return item === src;
+                }
+            });
+            
             this.lightbox.isOpen = true;
         },
         closeLightbox() {
             this.lightbox.isOpen = false;
             this.lightbox.src = '';
+            this.lightbox.items = [];
+            this.lightbox.currentIndex = -1;
         },
         getLightboxItems() {
             const cards = Array.from(document.querySelectorAll('.card'));
@@ -97,39 +116,17 @@ document.addEventListener('alpine:init', () => {
             }).filter(Boolean);
         },
         nextLightboxItem() {
-            if (!this.lightbox.isOpen) return;
-            const items = this.getLightboxItems();
-            if (items.length === 0) return;
-            const currentIndex = items.findIndex(item => {
-                try {
-                    const url1 = new URL(item, window.location.origin);
-                    const url2 = new URL(this.lightbox.src, window.location.origin);
-                    return url1.pathname === url2.pathname;
-                } catch(e) {
-                    return item === this.lightbox.src;
-                }
-            });
-            if (currentIndex !== -1) {
-                const nextIndex = (currentIndex + 1) % items.length;
-                this.openLightbox(items[nextIndex]);
+            if (!this.lightbox.isOpen || this.lightbox.items.length === 0) return;
+            if (this.lightbox.currentIndex !== -1) {
+                const nextIndex = (this.lightbox.currentIndex + 1) % this.lightbox.items.length;
+                this.openLightbox(this.lightbox.items[nextIndex]);
             }
         },
         prevLightboxItem() {
-            if (!this.lightbox.isOpen) return;
-            const items = this.getLightboxItems();
-            if (items.length === 0) return;
-            const currentIndex = items.findIndex(item => {
-                try {
-                    const url1 = new URL(item, window.location.origin);
-                    const url2 = new URL(this.lightbox.src, window.location.origin);
-                    return url1.pathname === url2.pathname;
-                } catch(e) {
-                    return item === this.lightbox.src;
-                }
-            });
-            if (currentIndex !== -1) {
-                const prevIndex = (currentIndex - 1 + items.length) % items.length;
-                this.openLightbox(items[prevIndex]);
+            if (!this.lightbox.isOpen || this.lightbox.items.length === 0) return;
+            if (this.lightbox.currentIndex !== -1) {
+                const prevIndex = (this.lightbox.currentIndex - 1 + this.lightbox.items.length) % this.lightbox.items.length;
+                this.openLightbox(this.lightbox.items[prevIndex]);
             }
         },
 
